@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.2
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.3
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -9,7 +9,8 @@
  *  - Kaynakça dışa aktarma: RIS ve BibTeX (Zotero / Mendeley / EndNote)
  *  - Tez metinleri (PDF) toplu indirme (anlamlı dosya adları, 500 MB'lık ZIP parçaları)
  *  - Biriktirme (IndexedDB): 2000 sınırını aşmak için birden çok aramayı tekrarsız biriktirme
- *  - Filtreleme: biriken listeyi yıl/tür/dil/üniversite/konu/PDF ölçütleriyle süzme
+ *  - Otomatik etiketleme: bilim dalı + anahtar kelime kurallarıyla "Etiket" ve "Bilim Dalı" sütunları
+ *  - Filtreleme: biriken listeyi etiket/yıl/tür/dil/üniversite/konu/PDF ölçütleriyle süzme
  *  - Yedekle / Geri yükle (JSON) ve 2000 sınırı uyarısı
  *
  * KULLANIM: Arama SONUÇ sayfasında (tezSorguSonucYeni.jsp) F12 > Console açıp
@@ -119,9 +120,55 @@
     }, 12, onProgress).then(function () { return rows.filter(Boolean); });
   }
 
+  /* ---------- Otomatik etiketleme (bilim dalı) ---------- */
+  // Varsayılan kurallar — kullanıcı panelden düzenleyebilir. Biçim:  Etiket = kelime1, kelime2, ...
+  var DEFAULT_RULES =
+    "Türk İslam Edebiyatı = türk islam edebiyat, islam edebiyat, edebiyat, divan, dîvân, mesnevi, gazel, kaside, na't, naat, mevlid, şair, şiir, belagat, aruz, münşeat\n" +
+    "Türk İslam Sanatları = türk islam sanat, islam sanatları, sanatları, hüsn-i hat, hattat, hat sanat, tezhip, minyatür, ebru, çini, kaligrafi, tezyin, mushaf, cilt sanat, kitabe, mimari\n" +
+    "İslam Tarihi = islam tarihi, islam tarih, siyer, sahabe, halife, hilafet, hulefa, emevi, emevî, abbasi, abbâsî, endülüs, memlük, fetih, meğazi, gazve, asr-ı saadet, raşid, hz. peygamber, hz. muhammed";
+
+  function lc(s) { return String(s || "").toLocaleLowerCase("tr"); }
+  function parseRules(text) {
+    return String(text || "").split(/\r?\n/).map(function (line) {
+      var i = line.indexOf("=");
+      if (i === -1) return null;
+      var label = line.slice(0, i).trim();
+      var kws = line.slice(i + 1).split(",").map(function (s) { return lc(s.trim()); }).filter(Boolean);
+      return label && kws.length ? { label: label, keywords: kws } : null;
+    }).filter(Boolean);
+  }
+  // Yer bilgisinden GERÇEK bilim dalı parçasını al (anabilim dalı hariç; birleşik ABD ayrım için kullanılmaz)
+  function bilimDaliSegment(yer) {
+    var p = String(yer || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean);
+    return p.find(function (s) { return /bilim dal/i.test(s) && !/anabilim/i.test(s); }) || "";
+  }
+  // Bir satırı sınıflandır: 1) bilim dalı tek disipline uyuyorsa kesin, 2) metin (konu+başlık+anahtar+özet), 3) Belirsiz
+  function classifyRow(row, rules) {
+    var bd = bilimDaliSegment(row["Üniversite / Yer Bilgisi"]);
+    if (bd) {
+      var bdLc = lc(bd);
+      var hits = rules.filter(function (r) { return r.keywords.some(function (kw) { return bdLc.indexOf(kw) > -1; }); });
+      if (hits.length === 1) return hits[0].label; // tek disiplin → kesin
+      // 0 veya birden fazla (birleşik) → metne düş
+    }
+    var hay = lc([row["Konu"], row["Tez Adı (Orijinal)"], row["Dizin (Anahtar Kelimeler)"], row["Özet (Türkçe)"]].join(" "));
+    for (var i = 0; i < rules.length; i++) { for (var j = 0; j < rules[i].keywords.length; j++) { if (hay.indexOf(rules[i].keywords[j]) > -1) return rules[i].label; } }
+    return "Belirsiz";
+  }
+  var getRules = function () { return parseRules(DEFAULT_RULES); }; // UI hazır olunca panele bağlanır
+  function tagRows(rows) {
+    var rules = getRules();
+    return rows.map(function (r) {
+      var c = Object.assign({}, r); delete c._key;
+      c["Bilim Dalı"] = bilimDaliSegment(c["Üniversite / Yer Bilgisi"]);
+      c["Etiket"] = classifyRow(c, rules);
+      return c;
+    });
+  }
+
   /* ---------- Çıktı biçimleri ---------- */
-  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
-  var COLUMN_WIDTHS = [55, 22, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
+  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
+  var COLUMN_WIDTHS = [55, 22, 20, 26, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
 
   function cleanRows(rows) { return rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; }); }
 
@@ -144,6 +191,8 @@
       if (limit && pairs.length > limit) aoa.push(["… (+" + (pairs.length - limit) + " diğer)", "", ""]);
       aoa.push([""]);
     }
+    if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE", tally(function (r) { return r["Etiket"]; }));
+    section("BİLİM DALINA GÖRE (ilk 25)", tally(function (r) { return r["Bilim Dalı"] || "(belirtilmemiş)"; }), 25);
     section("YILA GÖRE", tally(function (r) { return r["Yıl"]; }));
     section("TÜRE GÖRE", tally(function (r) { return r["Tür"]; }));
     section("DİLE GÖRE", tally(function (r) { return r["Dil"]; }));
@@ -155,21 +204,20 @@
   }
 
   function exportExcel(rows, prefix) {
-    var clean = cleanRows(rows);
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, buildMainSheet(clean), "Tezler");
-    XLSX.utils.book_append_sheet(wb, buildStatsSheet(clean), "İstatistik");
+    XLSX.utils.book_append_sheet(wb, buildMainSheet(rows), "Tezler");
+    XLSX.utils.book_append_sheet(wb, buildStatsSheet(rows), "İstatistik");
     XLSX.writeFile(wb, (prefix || "Tez_Metaverileri") + "_" + stamp() + ".xlsx");
   }
   function saveText(text, filename, mime) {
     saveAs(new Blob(["﻿" + text], { type: (mime || "text/plain") + ";charset=utf-8" }), filename);
   }
   function exportCSV(rows, prefix) {
-    var csv = XLSX.utils.sheet_to_csv(buildMainSheet(cleanRows(rows)), { FS: ";" });
+    var csv = XLSX.utils.sheet_to_csv(buildMainSheet(rows), { FS: ";" });
     saveText(csv, (prefix || "Tez_Metaverileri") + "_" + stamp() + ".csv", "text/csv");
   }
   function exportJSON(rows, prefix) {
-    saveText(JSON.stringify(cleanRows(rows), null, 1), (prefix || "Tez_Metaverileri") + "_" + stamp() + ".json", "application/json");
+    saveText(JSON.stringify(rows, null, 1), (prefix || "Tez_Metaverileri") + "_" + stamp() + ".json", "application/json");
   }
 
   /* ---------- Kaynakça (RIS / BibTeX) ---------- */
@@ -183,6 +231,7 @@
       if (r["Yıl"]) L.push("PY  - " + risEsc(r["Yıl"]));
       L.push("PB  - " + risEsc(cleanUni(r["Üniversite / Yer Bilgisi"])));
       if (r["Tür"]) L.push("M3  - " + risEsc(r["Tür"]));
+      if (r["Etiket"] && r["Etiket"] !== "Belirsiz") L.push("KW  - " + risEsc(r["Etiket"]));
       if (r["Dizin (Anahtar Kelimeler)"]) risEsc(r["Dizin (Anahtar Kelimeler)"]).split(/\s*\|\s*|;\s*/).filter(Boolean).forEach(function (k) { L.push("KW  - " + k); });
       if (r["Özet (Türkçe)"]) L.push("AB  - " + risEsc(r["Özet (Türkçe)"]));
       if (r["Özet (İngilizce)"]) L.push("N2  - " + risEsc(r["Özet (İngilizce)"]));
@@ -204,7 +253,7 @@
     return rows.map(function (r) {
       var f = [["title", r["Tez Adı (Orijinal)"]], ["author", r["Yazar"]], ["year", r["Yıl"]],
         ["school", cleanUni(r["Üniversite / Yer Bilgisi"])], ["type", r["Tür"]],
-        ["keywords", (r["Dizin (Anahtar Kelimeler)"] || "").replace(/\|/g, ",")],
+        ["keywords", [r["Etiket"] && r["Etiket"] !== "Belirsiz" ? r["Etiket"] : "", (r["Dizin (Anahtar Kelimeler)"] || "").replace(/\|/g, ",")].filter(Boolean).join(", ")],
         ["abstract", r["Özet (Türkçe)"]], ["language", r["Dil"]],
         ["note", r["Tez No"] ? "Tez No: " + r["Tez No"] : ""], ["url", r["PDF İndirme Linki"]]];
       var body = f.filter(function (x) { return x[1]; }).map(function (x) { return "  " + x[0] + " = {" + texEsc(x[1]) + "}"; }).join(",\n");
@@ -215,11 +264,12 @@
   /* ---------- Biçim seçimine göre dışa aktar ---------- */
   function exportData(rows, prefix, format) {
     if (!rows.length) { alert("Dışa aktarılacak tez yok."); return; }
-    if (format === "csv") exportCSV(rows, prefix);
-    else if (format === "json") exportJSON(rows, prefix);
-    else if (format === "ris") saveText(toRIS(cleanRows(rows)), (prefix || "Tez") + "_kaynakca_" + stamp() + ".ris", "application/x-research-info-systems");
-    else if (format === "bib") saveText(toBibTeX(cleanRows(rows)), (prefix || "Tez") + "_kaynakca_" + stamp() + ".bib", "application/x-bibtex");
-    else exportExcel(rows, prefix);
+    var data = tagRows(rows); // temizle + Etiket/Bilim Dalı sütunlarını ekle
+    if (format === "csv") exportCSV(data, prefix);
+    else if (format === "json") exportJSON(data, prefix);
+    else if (format === "ris") saveText(toRIS(data), (prefix || "Tez") + "_kaynakca_" + stamp() + ".ris", "application/x-research-info-systems");
+    else if (format === "bib") saveText(toBibTeX(data), (prefix || "Tez") + "_kaynakca_" + stamp() + ".bib", "application/x-bibtex");
+    else exportExcel(data, prefix);
   }
 
   /* ---------- PDF metinleri (anlamlı dosya adları) ---------- */
@@ -263,10 +313,12 @@
 
   /* ---------- Filtre ---------- */
   function applyFilter(rows, f) {
+    var rules = f.etiket ? getRules() : null;
     return rows.filter(function (r) {
       var y = parseInt(r["Yıl"], 10);
       if (f.yil1 && (!y || y < f.yil1)) return false;
       if (f.yil2 && (!y || y > f.yil2)) return false;
+      if (f.etiket && lc(classifyRow(r, rules)).indexOf(f.etiket) === -1) return false;
       if (f.tur && (r["Tür"] || "").toLocaleLowerCase("tr").indexOf(f.tur) === -1) return false;
       if (f.dil && (r["Dil"] || "").toLocaleLowerCase("tr").indexOf(f.dil) === -1) return false;
       if (f.uni && (r["Üniversite / Yer Bilgisi"] || "").toLocaleLowerCase("tr").indexOf(f.uni) === -1) return false;
@@ -300,7 +352,8 @@
       "#ytz-panel button.ytz-btn.sec{background:#0b5cad;}#ytz-panel button.ytz-btn.gray{background:#555;}" +
       "#ytz-panel button.ytz-btn.warn{background:#b02a37;font-size:12px;padding:7px;}" +
       "#ytz-panel button.ytz-btn:hover{filter:brightness(.92);}#ytz-panel button.ytz-btn:disabled{background:#9e9e9e;cursor:not-allowed;}" +
-      "#ytz-panel select,#ytz-panel input{width:100%;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12.5px;box-sizing:border-box;}" +
+      "#ytz-panel select,#ytz-panel input,#ytz-panel textarea{width:100%;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12.5px;box-sizing:border-box;font-family:inherit;}" +
+      "#ytz-panel textarea{min-height:88px;resize:vertical;line-height:1.4;}" +
       "#ytz-panel label{font-size:11.5px;color:#555;display:block;margin:4px 0 1px;}" +
       "#ytz-panel .ytz-bar{height:13px;background:#e5e5e5;border-radius:7px;overflow:hidden;margin-top:8px;}#ytz-panel .ytz-bar>i{display:block;height:100%;width:0;background:#1f883d;transition:width .2s;}" +
       "#ytz-panel .ytz-label{font-size:12px;color:#444;margin-top:6px;white-space:pre-line;}" +
@@ -331,9 +384,14 @@
           '<button class="ytz-btn warn" id="ytz-clear">Biriktirmeyi temizle</button>' +
           '<input type="file" id="ytz-file" accept=".json" style="display:none;">' +
         '</div>' +
+        '<div class="ytz-sec"><h4>Etiketleme (bilim dalı) kuralları</h4>' +
+          '<p style="font-size:11.5px;color:#555;">Her satır: <b>Etiket = kelime1, kelime2, …</b>. Araç her tezi önce <b>Bilim Dalı</b>\'na, o yoksa <b>Konu+Başlık+Anahtar Kelime+Özet</b>\'e bakarak etiketler; hiçbiri tutmazsa <b>Belirsiz</b> yazar. Çıktıya <b>Etiket</b> ve <b>Bilim Dalı</b> sütunları eklenir.</p>' +
+          '<textarea id="ytz-rules" spellcheck="false"></textarea>' +
+        '</div>' +
         '<div class="ytz-sec"><h4>Filtrele (biriktirilenler üzerinde)</h4>' +
           '<div class="row"><div><label>Yıl (min)</label><input id="ytz-f-yil1" type="number" placeholder="örn. 2015"></div>' +
           '<div><label>Yıl (max)</label><input id="ytz-f-yil2" type="number" placeholder="örn. 2024"></div></div>' +
+          '<label>Etiket içerir</label><input id="ytz-f-etiket" placeholder="islam tarihi… (yukarıdaki kurallara göre)">' +
           '<div class="row"><div><label>Tür içerir</label><input id="ytz-f-tur" placeholder="doktora…"></div>' +
           '<div><label>Dil içerir</label><input id="ytz-f-dil" placeholder="türkçe…"></div></div>' +
           '<label>Üniversite / Yer içerir</label><input id="ytz-f-uni" placeholder="ankara üniversitesi…">' +
@@ -344,10 +402,12 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.2</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.3</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
+    $("#ytz-rules").value = DEFAULT_RULES;
+    getRules = function () { return parseRules(($("#ytz-rules").value || "").trim() || DEFAULT_RULES); };
     var elInfo = $("#ytz-info"), prog = $("#ytz-prog"), bar = $("#ytz-bar"), plabel = $("#ytz-plabel");
     var fmt = function () { return $("#ytz-format").value; };
     var allBtns = Array.from(panel.querySelectorAll("button.ytz-btn"));
@@ -395,6 +455,7 @@
     $("#ytz-filter").onclick = function () {
       var f = {
         yil1: parseInt($("#ytz-f-yil1").value, 10) || 0, yil2: parseInt($("#ytz-f-yil2").value, 10) || 0,
+        etiket: $("#ytz-f-etiket").value.trim().toLocaleLowerCase("tr"),
         tur: $("#ytz-f-tur").value.trim().toLocaleLowerCase("tr"), dil: $("#ytz-f-dil").value.trim().toLocaleLowerCase("tr"),
         uni: $("#ytz-f-uni").value.trim().toLocaleLowerCase("tr"), konu: $("#ytz-f-konu").value.trim().toLocaleLowerCase("tr"),
         onlyPdf: $("#ytz-f-pdf").checked
