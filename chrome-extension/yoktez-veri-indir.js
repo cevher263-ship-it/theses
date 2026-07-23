@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.4
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.5
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -123,11 +123,15 @@
       "kayitNo": t.kayitNo, "tezNo (kodlu)": t.tezNo
     };
   }
-  function fetchAllMetadata(theses, onProgress) {
+  // collectPdf=false (varsayılan): sadece metaveri (tezBilgiDetay) çekilir → ~2× hızlı.
+  //   PDF indirme linki gerektiğinde (PDF·ZIP indirirken) o an alınır.
+  // collectPdf=true: PDF linki de metaveriye eklenir (Excel'de "PDF İndirme Linki" dolu gelir, yavaşlar).
+  function fetchAllMetadata(theses, onProgress, collectPdf) {
     var rows = new Array(theses.length);
     return runPool(theses, function (t) {
-      return Promise.all([fetchDetay(t), fetchPdfLink(t)]).then(function (res) { rows[theses.indexOf(t)] = buildRow(t, res[0] || {}, res[1]); });
-    }, 6, onProgress).then(function () { return rows.filter(Boolean); });
+      var jobs = [fetchDetay(t), collectPdf ? fetchPdfLink(t) : Promise.resolve(null)];
+      return Promise.all(jobs).then(function (res) { rows[theses.indexOf(t)] = buildRow(t, res[0] || {}, res[1]); });
+    }, 10, onProgress).then(function () { return rows.filter(Boolean); });
   }
 
   /* ---------- Otomatik etiketleme (bilim dalı) ----------
@@ -322,26 +326,38 @@
     while (used[name]) name = base + "_" + (r["Tez No"] || ++i) + ".pdf";
     used[name] = 1; return name;
   }
+  // Satırdaki PDF linki yoksa (metaveri aşamasında toplanmadıysa) o an getTezPdf ile alır.
+  function resolvePdfLink(r) {
+    if (r["PDF İndirme Linki"]) return Promise.resolve(r["PDF İndirme Linki"]);
+    var kayitNo = r["kayitNo"], tezNo = r["tezNo (kodlu)"];
+    if (!kayitNo || !tezNo) return Promise.resolve(null);
+    return fetchPdfLink({ kayitNo: kayitNo, tezNo: tezNo });
+  }
   function downloadTexts(rows, onProgress, onInfo) {
-    var withPdf = rows.filter(function (r) { return r["PDF İndirme Linki"]; });
-    if (withPdf.length === 0) { alert("İndirilebilir (erişime açık) PDF bulunamadı."); return Promise.resolve(); }
-    var zip = new JSZip(), chunkIndex = 0, chunkSize = 0, total = 0, count = 0, used = {};
-    var maxChunk = 500 * 1024 * 1024, seq = Promise.resolve();
-    withPdf.forEach(function (r) {
+    var zip = new JSZip(), chunkIndex = 0, chunkSize = 0, total = 0, count = 0, downloaded = 0, used = {};
+    var n = rows.length, maxChunk = 500 * 1024 * 1024, seq = Promise.resolve();
+    rows.forEach(function (r) {
       seq = seq.then(function () {
-        return fetch(r["PDF İndirme Linki"], { credentials: "include" })
-          .then(function (resp) { if (!resp.ok) throw new Error("HTTP " + resp.status); return resp.blob(); })
-          .then(function (blob) {
-            zip.file(pdfName(r, used), blob); chunkSize += blob.size; total += blob.size; count++;
-            onProgress(Math.round((100 * count) / withPdf.length));
-            onInfo(count + " / " + withPdf.length + " tez metni indirildi (" + (total / (1024 * 1024)).toFixed(1) + " MB).\nPDF'ler 500 MB'lık ZIP parçaları hâlinde kaydedilir.");
-            if (chunkSize >= maxChunk || count === withPdf.length) {
-              return zip.generateAsync({ type: "blob" }).then(function (c) { chunkIndex++; saveAs(c, "Tez_Metinleri_Part_" + chunkIndex + ".zip"); zip = new JSZip(); chunkSize = 0; });
-            }
-          }).catch(function (e) { console.warn("PDF indirilemedi (" + r["Tez No"] + "):", e.message); });
+        return resolvePdfLink(r).then(function (link) {
+          count++;
+          onProgress(Math.round((100 * count) / n));
+          if (!link) { onInfo(count + " / " + n + " tez tarandı, " + downloaded + " PDF indirildi (" + (total / (1024 * 1024)).toFixed(1) + " MB). (Erişime kapalı olanlar atlanır.)"); return; }
+          return fetch(link, { credentials: "include" })
+            .then(function (resp) { if (!resp.ok) throw new Error("HTTP " + resp.status); return resp.blob(); })
+            .then(function (blob) {
+              zip.file(pdfName(r, used), blob); chunkSize += blob.size; total += blob.size; downloaded++;
+              onInfo(count + " / " + n + " tez tarandı, " + downloaded + " PDF indirildi (" + (total / (1024 * 1024)).toFixed(1) + " MB).\nPDF'ler 500 MB'lık ZIP parçaları hâlinde kaydedilir.");
+              if (chunkSize >= maxChunk) {
+                return zip.generateAsync({ type: "blob" }).then(function (c) { chunkIndex++; saveAs(c, "Tez_Metinleri_Part_" + chunkIndex + ".zip"); zip = new JSZip(); chunkSize = 0; });
+              }
+            }).catch(function (e) { console.warn("PDF indirilemedi (" + r["Tez No"] + "):", e.message); });
+        });
       });
     });
-    return seq;
+    return seq.then(function () {
+      if (downloaded === 0) { alert("İndirilebilir (erişime açık) PDF bulunamadı."); return; }
+      if (chunkSize > 0) return zip.generateAsync({ type: "blob" }).then(function (c) { chunkIndex++; saveAs(c, "Tez_Metinleri_Part_" + chunkIndex + ".zip"); });
+    });
   }
 
   /* ---------- Biriktirme deposu (IndexedDB) ---------- */
@@ -412,6 +428,7 @@
         '<p id="ytz-info"></p>' + warnHtml +
         '<label>Çıktı biçimi</label>' +
         '<select id="ytz-format"><option value="xlsx">Excel (.xlsx) — filtreli + istatistik</option><option value="csv">CSV (.csv)</option><option value="json">JSON (.json)</option><option value="ris">RIS — kaynakça (Zotero/Mendeley/EndNote)</option><option value="bib">BibTeX — kaynakça</option></select>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="ytz-pdflink" style="width:auto;"> Excel\'e PDF indirme linki sütununu da ekle <span style="color:#b02a37;">(≈2× yavaşlar)</span></label>' +
         '<div class="ytz-sec"><h4>Bu sayfadaki sonuçlar</h4>' +
           '<button class="ytz-btn" id="ytz-meta">Bu sayfayı indir (seçili biçim)</button>' +
           '<button class="ytz-btn sec" id="ytz-text">Bu sayfanın metinleri (PDF·ZIP)</button>' +
@@ -443,7 +460,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.4</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.5</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
@@ -471,11 +488,12 @@
     function close() { overlay.remove(); panel.remove(); css.remove(); }
     overlay.onclick = close; $(".ytz-x").onclick = close;
 
-    var pageRows = null;
+    var pageRows = null, pageRowsPdf = false;
     function getPageRows() {
-      if (pageRows) return Promise.resolve(pageRows);
+      var wantPdf = $("#ytz-pdflink").checked;
+      if (pageRows && pageRowsPdf === wantPdf) return Promise.resolve(pageRows);
       setL("Metaveriler indiriliyor…");
-      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }).then(function (r) { pageRows = r; return r; });
+      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }, wantPdf).then(function (r) { pageRows = r; pageRowsPdf = wantPdf; return r; });
     }
 
     $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL("Bitti · " + r.length + " tez aktarıldı."); idle(); }); };
