@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.5
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -32,7 +32,8 @@
   }
   function ensureDeps() {
     var t = [];
-    if (typeof window.XLSX === "undefined") t.push(loadScript("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"));
+    // xlsx-js-style: SheetJS API'si + hücre stili (renk/font/kenarlık) desteği (MIT, ücretsiz)
+    if (typeof window.XLSX === "undefined") t.push(loadScript("https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"));
     if (typeof window.JSZip === "undefined") t.push(loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"));
     if (typeof window.saveAs === "undefined") t.push(loadScript("https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"));
     return Promise.all(t);
@@ -217,24 +218,54 @@
 
   function cleanRows(rows) { return rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; }); }
 
-  function buildMainSheet(rows) {
+  /* ---------- Stil yardımcıları (xlsx-js-style) ---------- */
+  var GREEN = "1F883D", GREEN_DK = "186C31", ZEBRA = "EAF3EC", HEAD_TXT = "FFFFFF", BORDER = "D6D6D6";
+  function thinBorder(color) { var b = { style: "thin", color: { rgb: color || BORDER } }; return { top: b, bottom: b, left: b, right: b }; }
+  var HEADER_STYLE = { font: { bold: true, color: { rgb: HEAD_TXT }, sz: 11 }, fill: { fgColor: { rgb: GREEN } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: thinBorder(GREEN_DK) };
+  function styleDataSheet(ws) {
+    if (!ws["!ref"]) return ws;
+    var range = XLSX.utils.decode_range(ws["!ref"]);
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var h = XLSX.utils.encode_cell({ r: 0, c: c });
+      if (ws[h]) ws[h].s = HEADER_STYLE;
+    }
+    for (var r = 1; r <= range.e.r; r++) {
+      var zebra = (r % 2 === 0);
+      var rowStyle = { alignment: { vertical: "top", wrapText: false }, font: { sz: 10 }, border: thinBorder() };
+      if (zebra) rowStyle.fill = { fgColor: { rgb: ZEBRA } };
+      for (var c2 = range.s.c; c2 <= range.e.c; c2++) {
+        var a = XLSX.utils.encode_cell({ r: r, c: c2 });
+        if (ws[a]) ws[a].s = rowStyle;
+      }
+    }
+    ws["!rows"] = [{ hpt: 26 }]; // başlık satırı biraz yüksek
+    return ws;
+  }
+  function buildMainSheet(rows, styled) {
     var ws = XLSX.utils.json_to_sheet(rows, { header: COLUMN_ORDER });
     ws["!cols"] = COLUMN_WIDTHS.map(function (w) { return { wch: w }; });
     if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
-    return ws;
+    if (!styled) return ws;
+    ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
+    return styleDataSheet(ws);
   }
 
-  // İstatistik sayfası: yıl/tür/dil/konu/üniversiteye göre adet + metin çubuk
+  // İstatistik sayfası: yıl/tür/dil/konu/üniversiteye göre adet + renkli çubuk
   function buildStatsSheet(rows) {
     function tally(getter) { var m = {}; rows.forEach(function (r) { var v = (getter(r) || "—").toString().trim() || "—"; m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort(function (a, b) { return b[1] - a[1]; }); }
     function bar(n, max) { var w = max ? Math.round(n / max * 30) : 0; return "█".repeat(w); }
-    var aoa = [["YÖK TEZ MERKEZİ — İSTATİSTİK ÖZETİ"], ["Toplam tez", rows.length], [""]];
+    var aoa = [], kind = []; // kind[r]: 'title' | 'sub' | 'data' | 'blank'
+    function push(row, k) { aoa.push(row); kind.push(k); }
+    push(["YÖK TEZ MERKEZİ — İSTATİSTİK ÖZETİ", ""], "title");
+    push(["Toplam tez", rows.length], "sub");
+    push([""], "blank");
     function section(title, pairs, limit) {
-      aoa.push([title]); aoa.push(["Değer", "Adet", ""]);
+      push([title, ""], "title");
+      push(["Değer", "Adet", ""], "sub");
       var max = pairs.length ? pairs[0][1] : 0;
-      pairs.slice(0, limit || pairs.length).forEach(function (p) { aoa.push([p[0], p[1], bar(p[1], max)]); });
-      if (limit && pairs.length > limit) aoa.push(["… (+" + (pairs.length - limit) + " diğer)", "", ""]);
-      aoa.push([""]);
+      pairs.slice(0, limit || pairs.length).forEach(function (p) { push([p[0], p[1], bar(p[1], max)], "data"); });
+      if (limit && pairs.length > limit) push(["… (+" + (pairs.length - limit) + " diğer)", "", ""], "data");
+      push([""], "blank");
     }
     if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE (ilk 30)", tally(function (r) { return r["Etiket"]; }), 30);
     section("ANABİLİM DALINA GÖRE (ilk 25)", tally(function (r) { return r["Anabilim Dalı"] || "(belirtilmemiş)"; }), 25);
@@ -245,12 +276,22 @@
     section("ÜNİVERSİTEYE GÖRE (ilk 25)", tally(function (r) { return cleanUni(r["Üniversite / Yer Bilgisi"]); }), 25);
     var ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = [{ wch: 45 }, { wch: 10 }, { wch: 34 }];
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    // stiller
+    var titleStyle = { font: { bold: true, color: { rgb: HEAD_TXT }, sz: 12 }, fill: { fgColor: { rgb: GREEN } }, alignment: { vertical: "center" } };
+    var subStyle = { font: { bold: true, color: { rgb: GREEN_DK }, sz: 10 }, fill: { fgColor: { rgb: ZEBRA } } };
+    var barStyle = { font: { color: { rgb: GREEN }, sz: 10 } };
+    kind.forEach(function (k, r) {
+      if (k === "title") { for (var c = 0; c <= 2; c++) { var a = XLSX.utils.encode_cell({ r: r, c: c }); if (!ws[a]) ws[a] = { t: "s", v: "" }; ws[a].s = titleStyle; } ws["!rows"] = ws["!rows"] || []; ws["!rows"][r] = { hpt: 20 }; }
+      else if (k === "sub") { for (var c2 = 0; c2 <= 2; c2++) { var a2 = XLSX.utils.encode_cell({ r: r, c: c2 }); if (ws[a2]) ws[a2].s = subStyle; } }
+      else if (k === "data") { var ab = XLSX.utils.encode_cell({ r: r, c: 2 }); if (ws[ab]) ws[ab].s = barStyle; }
+    });
     return ws;
   }
 
   function exportExcel(rows, prefix) {
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, buildMainSheet(rows), "Tezler");
+    XLSX.utils.book_append_sheet(wb, buildMainSheet(rows, true), "Tezler");
     XLSX.utils.book_append_sheet(wb, buildStatsSheet(rows), "İstatistik");
     XLSX.writeFile(wb, (prefix || "Tez_Metaverileri") + "_" + stamp() + ".xlsx");
   }
@@ -460,7 +501,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.5</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
