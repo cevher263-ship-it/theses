@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.10
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.10.1
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -440,6 +440,7 @@
     return oneLine(String(name || "").split(/\s+/).filter(function (w) { return !WOS_TITLES[lc(w).replace(/[.̇]/g, "")]; }).join(" "));
   }
   var wosAdvisorAsAuthor = false; // panelden ayarlanır
+  var wosNoAbstract = false; // özetsiz (hafif) WoS çıktısı — büyük korpusta bibliometrix'i hızlandırır
   function toWos(rows) {
     var out = ["FN Clarivate Analytics Web of Science", "VR 1.0"];
     rows.forEach(function (r) {
@@ -459,7 +460,7 @@
       out.push("DT " + docTypeWos(r["Tür"]));
       if (de) out.push("DE " + de);
       if (id) out.push("ID " + id);
-      if (ab) out.push("AB " + ab);
+      if (ab && !wosNoAbstract) out.push("AB " + ab); // özetsiz (hafif) modda AB atlanır
       out.push("C1 " + oneLine(r["Üniversite / Yer Bilgisi"]));
       if (r["Yıl"]) out.push("PY " + r["Yıl"]);
       out.push("TC 0");
@@ -480,7 +481,7 @@
     else if (format === "json") exportJSON(data, prefix);
     else if (format === "ris") saveText(toRIS(data), (prefix || "Tez") + "_kaynakca_" + stamp() + ".ris", "application/x-research-info-systems");
     else if (format === "bib") saveText(toBibTeX(data), (prefix || "Tez") + "_kaynakca_" + stamp() + ".bib", "application/x-bibtex");
-    else if (format === "wos") saveNoBom(toWos(data), (prefix || "Tez") + "_bibliometrix_" + stamp() + ".txt"); // WoS plaintext (BOM'suz!)
+    else if (format === "wos") saveNoBom(toWos(data), (prefix || "Tez") + "_bibliometrix" + (wosNoAbstract ? "_ozetsiz" : "") + "_" + stamp() + ".txt"); // WoS plaintext (BOM'suz!)
     else exportExcel(data, prefix);
   }
 
@@ -663,6 +664,7 @@
         '<select id="ytz-format"><option value="xlsx">Excel (.xlsx) — filtreli + istatistik</option><option value="csv">CSV (.csv)</option><option value="json">JSON (.json)</option><option value="ris">RIS — kaynakça (Zotero/Mendeley/EndNote)</option><option value="bib">BibTeX — kaynakça</option><option value="wos">bibliometrix / biblioshiny (WoS düz-metin)</option></select>' +
         '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="ytz-pdflink" style="width:auto;"> Excel\'e PDF indirme linki sütununu da ekle <span style="color:#b02a37;">(≈2× yavaşlar)</span></label>' +
         '<label id="ytz-wos-adv-row" style="display:none;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-wos-advisor" style="width:auto;"> Danışmanı 2. yazar yap <span style="color:#666;">(bibliometrix işbirliği/danışman ağı için; yazar üretkenliği metriklerini karıştırır)</span></label>' +
+        '<label id="ytz-wos-noab-row" style="display:none;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-wos-noab" style="width:auto;"> Özetsiz (hafif) <span style="color:#666;">— büyük korpusta bibliometrix dönüştürmesini çok hızlandırır; tematik/kelime/üretim analizi için özet gerekmez</span></label>' +
         '<div class="ytz-sec"><h4>Bu sayfadaki sonuçlar</h4>' +
           '<button class="ytz-btn" id="ytz-meta">Bu sayfayı indir (seçili biçim)</button>' +
           '<button class="ytz-btn sec" id="ytz-text">Bu sayfanın metinleri (PDF·ZIP)</button>' +
@@ -697,7 +699,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.10</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.10.1</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
@@ -706,8 +708,9 @@
     var elInfo = $("#ytz-info"), prog = $("#ytz-prog"), bar = $("#ytz-bar"), plabel = $("#ytz-plabel");
     var fmt = function () { return $("#ytz-format").value; };
     // Danışman-2.-yazar kutusu yalnızca bibliometrix (wos) biçiminde görünür
-    $("#ytz-format").onchange = function () { $("#ytz-wos-adv-row").style.display = (fmt() === "wos") ? "flex" : "none"; };
+    $("#ytz-format").onchange = function () { var w = (fmt() === "wos") ? "flex" : "none"; $("#ytz-wos-adv-row").style.display = w; $("#ytz-wos-noab-row").style.display = w; };
     $("#ytz-wos-advisor").onchange = function () { wosAdvisorAsAuthor = this.checked; };
+    $("#ytz-wos-noab").onchange = function () { wosNoAbstract = this.checked; };
     var allBtns = Array.from(panel.querySelectorAll("button.ytz-btn"));
     function setBusy(b) { allBtns.forEach(function (x) { x.disabled = b; }); prog.style.display = "block"; }
     function idle() { allBtns.forEach(function (x) { x.disabled = false; }); refreshInfo(); }
