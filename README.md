@@ -9,7 +9,7 @@ Bu araç, Yükseköğretim Kurulu (YÖK) Tez Merkezi'nden veri indirmek için ge
 > **Kullanım:** Arama sonuç sayfasında (F12 → Console) aşağıdaki satırı yapıştırıp Enter'a basın:
 >
 > ```js
-> document.head.appendChild(Object.assign(document.createElement("script"),{src:"https://cdn.jsdelivr.net/gh/cevher263-ship-it/theses@v1.0/yoktez-veri-indir.js"}))
+> document.head.appendChild(Object.assign(document.createElement("script"),{src:"https://cdn.jsdelivr.net/gh/cevher263-ship-it/theses@v1.1/yoktez-veri-indir.js"}))
 > ```
 >
 > Sağ üstte açılan pencereden metaverileri **Excel** olarak veya erişime açık tez metinlerini **PDF/ZIP** olarak indirebilirsiniz.
