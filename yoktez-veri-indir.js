@@ -44,7 +44,7 @@
     if (html == null) return "";
     _tmp.innerHTML = String(html);
     var t = _tmp.textContent || _tmp.innerText || "";
-    return t.replace(/￾/g, " ").replace(/ /g, " ").replace(/[ \t]+\n/g, "\n").trim();
+    return t.replace(/\uFFFE/g, " ").replace(/ /g, " ").replace(/[ \t]+\n/g, "\n").trim();
   }
   function excelSafe(s) { s = s == null ? "" : String(s); return s.length > 32000 ? s.slice(0, 32000) + " …[kesildi]" : s; }
   function cleanUni(yer) { return String(yer || "").split(" / ")[0].replace(/[\s\/]+$/, "").trim(); }
@@ -251,7 +251,7 @@
     XLSX.writeFile(wb, (prefix || "Tez_Metaverileri") + "_" + stamp() + ".xlsx");
   }
   function saveText(text, filename, mime) {
-    saveAs(new Blob(["﻿" + text], { type: (mime || "text/plain") + ";charset=utf-8" }), filename);
+    saveAs(new Blob(["\uFEFF" + text], { type: (mime || "text/plain") + ";charset=utf-8" }), filename);
   }
   function exportCSV(rows, prefix) {
     var csv = XLSX.utils.sheet_to_csv(buildMainSheet(rows), { FS: ";" });
