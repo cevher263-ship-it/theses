@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.7
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.8
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -404,6 +404,71 @@
     else exportExcel(data, prefix);
   }
 
+  /* ---------- Özet rapor (grafikli, kendi içinde bağımsız HTML) ---------- */
+  function repEsc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function repTally(rows, getter) { var m = {}; rows.forEach(function (r) { var v = (getter(r) || "—").toString().trim() || "—"; m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort(function (a, b) { return b[1] - a[1]; }); }
+  function repBars(pairs, limit) {
+    pairs = pairs.slice(0, limit || pairs.length);
+    if (!pairs.length) return '<p class="empty">Veri yok.</p>';
+    var max = Math.max.apply(null, pairs.map(function (p) { return p[1]; })) || 1;
+    return '<div class="bars">' + pairs.map(function (p) {
+      var pct = Math.max(1, Math.round(p[1] / max * 100));
+      return '<div class="bar-row"><div class="bar-label" title="' + repEsc(p[0]) + '">' + repEsc(p[0]) + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div><div class="bar-val">' + p[1] + '</div></div>';
+    }).join("") + '</div>';
+  }
+  var REP_STOP = "ve ile bir bu için olarak göre ait dair olan ki da de mi mı ya veya çok daha en gibi kadar sonra önce adlı isimli üzerine bağlamında örneği örneğinde açısından incelenmesi incelemesi analizi araştırma araştırması değerlendirilmesi karşılaştırmalı karşılaştırılması ilişkin yönelik ması mesi arasında ının inin unun ünün nın nin nun nün ile ilgili".split(" ").reduce(function (o, w) { o[w] = 1; return o; }, {});
+  function repWords(rows) {
+    var freq = {};
+    rows.forEach(function (r) {
+      lc(r["Tez Adı (Orijinal)"]).split(/[^a-zçğıöşü0-9âîû]+/).forEach(function (w) {
+        if (w.length >= 4 && !REP_STOP[w] && !/^\d+$/.test(w)) freq[w] = (freq[w] || 0) + 1;
+      });
+    });
+    return Object.entries(freq).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 35);
+  }
+  function buildReportHTML(rows, kapsam) {
+    var years = repTally(rows, function (r) { return r["Yıl"]; }).filter(function (p) { return /^\d{4}$/.test(p[0]); }).sort(function (a, b) { return a[0] - b[0]; });
+    var ynums = years.map(function (p) { return +p[0]; });
+    var uni = {}, dan = {}, etk = {};
+    rows.forEach(function (r) { uni[cleanUni(r["Üniversite / Yer Bilgisi"])] = 1; if (r["Danışman"]) dan[r["Danışman"]] = 1; etk[r["Etiket"]] = 1; });
+    var words = repWords(rows), maxW = words.length ? words[0][1] : 1;
+    var cloud = words.map(function (p) { return '<span style="font-size:' + (13 + Math.round(p[1] / maxW * 24)) + 'px;opacity:' + (0.55 + p[1] / maxW * 0.45).toFixed(2) + '">' + repEsc(p[0]) + '</span>'; }).join(" ");
+    function box(l, v) { return '<div class="stat"><div class="stat-v">' + v + '</div><div class="stat-l">' + l + '</div></div>'; }
+    function sec(t, body) { return '<section><h2>' + t + '</h2>' + body + '</section>'; }
+    var css = "*{box-sizing:border-box}body{font-family:Segoe UI,Arial,sans-serif;color:#222;max-width:900px;margin:24px auto;padding:0 18px;line-height:1.5}" +
+      "h1{color:#1f883d;margin:0 0 4px}.sub{color:#666;margin:0 0 18px;font-size:13px}h2{color:#186c31;font-size:16px;border-bottom:2px solid #eaf3ec;padding-bottom:4px;margin:26px 0 12px}" +
+      ".stats{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 6px}.stat{flex:1;min-width:130px;background:#f4f9f5;border:1px solid #dcece0;border-radius:10px;padding:12px 14px;text-align:center}" +
+      ".stat-v{font-size:24px;font-weight:700;color:#1f883d}.stat-l{font-size:12px;color:#555;margin-top:2px}" +
+      ".bars{display:flex;flex-direction:column;gap:5px}.bar-row{display:flex;align-items:center;gap:8px;font-size:13px}" +
+      ".bar-label{width:230px;flex:0 0 230px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}" +
+      ".bar-track{flex:1;background:#eef1ef;border-radius:5px;height:18px;overflow:hidden}.bar-fill{height:100%;background:linear-gradient(90deg,#1f883d,#2ea24a);border-radius:5px}" +
+      ".bar-val{width:52px;flex:0 0 52px;font-variant-numeric:tabular-nums;color:#444;font-weight:600}" +
+      ".cloud{line-height:2;background:#f9fbfa;border:1px solid #e6efe9;border-radius:10px;padding:14px}.cloud span{color:#1f883d;margin:0 6px;display:inline-block}" +
+      ".foot{margin:30px 0 10px;color:#999;font-size:11px;text-align:right}.empty{color:#999;font-size:13px}" +
+      "@media print{body{margin:0}section{page-break-inside:avoid}}@media(max-width:560px){.bar-label{width:130px;flex-basis:130px}}";
+    return '<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YÖK Tez — Özet Rapor</title><style>' + css + '</style></head><body>' +
+      '<h1>YÖK Tez — Özet Rapor</h1><p class="sub">' + repEsc(kapsam) + ' · ' + rows.length + ' tez · oluşturulma: ' + stamp().replace(/-/g, ".") + '</p>' +
+      '<div class="stats">' + box("Toplam tez", rows.length) + box("Yıl aralığı", ynums.length ? Math.min.apply(null, ynums) + "–" + Math.max.apply(null, ynums) : "—") + box("Üniversite", Object.keys(uni).length) + box("Danışman", Object.keys(dan).length) + box("Disiplin/Etiket", Object.keys(etk).length) + '</div>' +
+      sec("Yıllara göre dağılım", repBars(years)) +
+      sec("Etikete göre (bilim dalı)", repBars(repTally(rows, function (r) { return r["Etiket"]; }), 20)) +
+      sec("Türe göre", repBars(repTally(rows, function (r) { return r["Tür"]; }))) +
+      sec("Dile göre", repBars(repTally(rows, function (r) { return r["Dil"]; }))) +
+      sec("En çok tez veren üniversiteler (ilk 15)", repBars(repTally(rows, function (r) { return cleanUni(r["Üniversite / Yer Bilgisi"]); }), 15)) +
+      sec("En üretken danışmanlar (ilk 15)", repBars(repTally(rows, function (r) { return r["Danışman"]; }).filter(function (p) { return p[0] !== "—"; }), 15)) +
+      sec("En sık konular (ilk 15)", repBars(repTally(rows, function (r) { return r["Konu"]; }), 15)) +
+      sec("Başlıklarda sık geçen kelimeler", '<div class="cloud">' + (cloud || '<span class="empty">Veri yok.</span>') + '</div>') +
+      '<p class="foot">mytunca/theses · yeni arayüz — Özet Rapor (yazdır → PDF olarak kaydedebilirsiniz)</p></body></html>';
+  }
+  function exportReport(rows, kapsam) {
+    if (!rows.length) { alert("Rapor için tez yok."); return; }
+    var html = buildReportHTML(tagRows(rows), kapsam);
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var w = window.open(url, "_blank");
+    if (!w) saveAs(blob, "Tez_Ozet_Rapor_" + stamp() + ".html"); // popup engellenirse indir
+  }
+
   /* ---------- PDF metinleri (anlamlı dosya adları) ---------- */
   function sanitizeName(s) { return String(s || "").replace(/[\\\/:*?"<>|\n\r\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80); }
   function pdfName(r, used) {
@@ -519,12 +584,14 @@
         '<div class="ytz-sec"><h4>Bu sayfadaki sonuçlar</h4>' +
           '<button class="ytz-btn" id="ytz-meta">Bu sayfayı indir (seçili biçim)</button>' +
           '<button class="ytz-btn sec" id="ytz-text">Bu sayfanın metinleri (PDF·ZIP)</button>' +
+          '<button class="ytz-btn" id="ytz-report" style="background:#6b3fa0">📊 Özet rapor (grafikli)</button>' +
         '</div>' +
         '<div class="ytz-sec"><h4>Biriktirme (2000 sınırını aşmak için)</h4>' +
           '<p style="font-size:11.5px;color:#555;">Aramayı yıl yıl daraltıp her seferinde biriktirin; sonda hepsini tek dosyada indirin. Tekrar eden tezler otomatik ayıklanır.</p>' +
           '<button class="ytz-btn" id="ytz-accum">Bu aramayı biriktir</button>' +
           '<button class="ytz-btn" id="ytz-exportall">Tümünü indir (seçili biçim)</button>' +
           '<button class="ytz-btn sec" id="ytz-textall">Biriktirilenlerin metinleri (PDF·ZIP)</button>' +
+          '<button class="ytz-btn" id="ytz-reportall" style="background:#6b3fa0">📊 Biriktirilenlerin özet raporu</button>' +
           '<div class="row"><button class="ytz-btn gray" id="ytz-backup">Yedekle (JSON)</button><button class="ytz-btn gray" id="ytz-restore">Geri yükle</button></div>' +
           '<button class="ytz-btn warn" id="ytz-clear">Biriktirmeyi temizle</button>' +
           '<input type="file" id="ytz-file" accept=".json" style="display:none;">' +
@@ -547,7 +614,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.7</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.8</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
@@ -566,8 +633,8 @@
         elInfo.textContent = (theses.length ? theses.length + " tez bu sayfada listeleniyor." : "Bu sayfada tez yok (aracı SONUÇ sayfasında çalıştırın).") + "\nBiriktirilen toplam: " + c + " tez.";
         $("#ytz-exportall").textContent = "Tümünü indir — " + c + " tez (seçili biçim)";
         var noPage = theses.length === 0, empty = c === 0;
-        $("#ytz-meta").disabled = $("#ytz-text").disabled = $("#ytz-accum").disabled = noPage;
-        $("#ytz-exportall").disabled = $("#ytz-textall").disabled = $("#ytz-clear").disabled = $("#ytz-backup").disabled = empty;
+        $("#ytz-meta").disabled = $("#ytz-text").disabled = $("#ytz-accum").disabled = $("#ytz-report").disabled = noPage;
+        $("#ytz-exportall").disabled = $("#ytz-textall").disabled = $("#ytz-clear").disabled = $("#ytz-backup").disabled = $("#ytz-reportall").disabled = empty;
         var hasF = filtered && filtered.length;
         $("#ytz-filter-export").disabled = $("#ytz-filter-text").disabled = !hasF;
       });
@@ -584,6 +651,8 @@
       return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }, wantPdf).then(function (res) { pageRows = res.rows; pageRowsPdf = wantPdf; pageFailed = res.failed; return res.rows; });
     }
 
+    $("#ytz-report").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportReport(r, "Bu sayfadaki arama"); setL("Özet rapor oluşturuldu (yeni sekme)." + failNote()); idle(); }); };
+    $("#ytz-reportall").onclick = function () { setBusy(true); setL("Rapor hazırlanıyor…"); dbGetAll().then(function (r) { exportReport(r, "Biriktirilen tüm aramalar"); setL("Özet rapor oluşturuldu (yeni sekme)."); idle(); }); };
     $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL("Bitti · " + r.length + " tez aktarıldı." + failNote()); idle(); }); };
     $("#ytz-text").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setP(0); setL("Metinler indiriliyor…"); return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
     $("#ytz-accum").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setL("Biriktirmeye ekleniyor…"); return dbPutRows(r); }).then(function () { setL("Bu aramadaki tezler biriktirmeye eklendi." + failNote()); idle(); }); };
