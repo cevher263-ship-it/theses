@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.3
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.4
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -9,7 +9,8 @@
  *  - Kaynakça dışa aktarma: RIS ve BibTeX (Zotero / Mendeley / EndNote)
  *  - Tez metinleri (PDF) toplu indirme (anlamlı dosya adları, 500 MB'lık ZIP parçaları)
  *  - Biriktirme (IndexedDB): 2000 sınırını aşmak için birden çok aramayı tekrarsız biriktirme
- *  - Otomatik etiketleme: bilim dalı + anahtar kelime kurallarıyla "Etiket" ve "Bilim Dalı" sütunları
+ *  - Otomatik etiketleme: "Etiket/Bilim Dalı/Anabilim Dalı" sütunları (genel: faktüel dal adı;
+ *    özel: İslam Tarihi / Türk İslam Edebiyatı / Türk İslam Sanatları içerikten tespit); +isteğe bağlı kurallar
  *  - Filtreleme: biriken listeyi etiket/yıl/tür/dil/üniversite/konu/PDF ölçütleriyle süzme
  *  - Yedekle / Geri yükle (JSON) ve 2000 sınırı uyarısı
  *
@@ -76,11 +77,20 @@
   }
 
   /* ---------- Ağ ---------- */
-  function fetchDetay(t) {
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // Sunucu yoğunlukta bazen boş/HTML yanıt döndürebilir; yer/özet kritik olduğu için 2 kez yeniden dener.
+  function fetchDetay(t, tries) {
+    tries = tries || 0;
     return fetch(BASE + "tezBilgiDetay.jsp?kayitNo=" + encodeURIComponent(t.kayitNo) + "&tezNo=" + encodeURIComponent(t.tezNo),
       { headers: { "X-Requested-With": "XMLHttpRequest" }, credentials: "include" })
       .then(function (r) { return r.text(); })
-      .then(function (x) { try { return JSON.parse(x.trim()); } catch (e) { return {}; } });
+      .then(function (x) {
+        var j = null; try { j = JSON.parse(x.trim()); } catch (e) {}
+        if (j && (j.yer || j.trOzet || j.danisman || j.enOzet)) return j;
+        if (tries < 2) return wait(500 + 400 * tries).then(function () { return fetchDetay(t, tries + 1); });
+        return j || {};
+      })
+      .catch(function () { return tries < 2 ? wait(500 + 400 * tries).then(function () { return fetchDetay(t, tries + 1); }) : {}; });
   }
   function fetchPdfLink(t) {
     return fetch(BASE + "getTezPdf.jsp?kayitNo=" + encodeURIComponent(t.kayitNo) + "&tezNo=" + encodeURIComponent(t.tezNo),
@@ -433,7 +443,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.3</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.4</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
