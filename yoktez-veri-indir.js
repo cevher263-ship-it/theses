@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.11
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.12
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -308,6 +308,8 @@
   /* ---------- Çıktı biçimleri ---------- */
   var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Anabilim Dalı", "Metin Neşri", "Neşredilen Eser (tahmini)", "Müellif (tahmini)", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
   var COLUMN_WIDTHS = [55, 22, 24, 26, 30, 11, 40, 26, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
+  var UNI_HELPER = "__uni_norm"; // Tezler sayfasında gizli yardımcı sütun (canlı istatistik için normalize üniversite)
+  function colLetter(name) { return XLSX.utils.encode_col(name === UNI_HELPER ? COLUMN_ORDER.length : COLUMN_ORDER.indexOf(name)); }
 
   function cleanRows(rows) { return rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; }); }
 
@@ -339,45 +341,84 @@
     ws["!cols"] = COLUMN_WIDTHS.map(function (w) { return { wch: w }; });
     if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
     if (!styled) return ws;
+    // Gizli yardımcı sütun: normalize üniversite adı (İstatistik sayfasındaki canlı COUNTIF için)
+    var HC = COLUMN_ORDER.length;
+    ws[XLSX.utils.encode_cell({ r: 0, c: HC })] = { t: "s", v: UNI_HELPER };
+    rows.forEach(function (r, i) { ws[XLSX.utils.encode_cell({ r: i + 1, c: HC })] = { t: "s", v: cleanUni(r["Üniversite / Yer Bilgisi"]) || "" }; });
+    if (ws["!ref"]) { var rg = XLSX.utils.decode_range(ws["!ref"]); if (HC > rg.e.c) { rg.e.c = HC; ws["!ref"] = XLSX.utils.encode_range(rg); } }
+    ws["!cols"][HC] = { wch: 22, hidden: true };
     ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
     return styleDataSheet(ws);
   }
 
-  // İstatistik sayfası: yıl/tür/dil/konu/üniversiteye göre adet + renkli çubuk
+  // İstatistik sayfası: CANLI formüller (COUNTA/COUNTIF/COUNTBLANK/REPT).
+  // "Tezler" sayfasından satır silince adetler, yüzdeler ve çubuklar otomatik güncellenir.
   function buildStatsSheet(rows) {
-    function tally(getter) { var m = {}; rows.forEach(function (r) { var v = (getter(r) || "—").toString().trim() || "—"; m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort(function (a, b) { return b[1] - a[1]; }); }
-    function bar(n, max) { var w = max ? Math.round(n / max * 30) : 0; return "█".repeat(w); }
-    var aoa = [], kind = []; // kind[r]: 'title' | 'sub' | 'data' | 'blank'
+    var N = rows.length + 1;               // Tezler sayfasında son veri satırı (1=başlık)
+    var TOTAL = "$B$2";                     // "Toplam tez" hücresi (aoa index 1 → Excel satır 2)
+    function rangeOf(name) { var L = colLetter(name); return "Tezler!$" + L + "$2:$" + L + "$" + N; }
+    function tallyCol(getter) {
+      var m = {}, blanks = 0;
+      rows.forEach(function (r) { var raw = getter(r); var v = (raw == null ? "" : String(raw)).trim(); if (!v) { blanks++; return; } m[v] = (m[v] || 0) + 1; });
+      var arr = Object.keys(m).map(function (k) { return { v: k, n: m[k], blank: false }; });
+      if (blanks > 0) arr.push({ v: "(boş)", n: blanks, blank: true });
+      arr.sort(function (a, b) { return b.n - a.n; });
+      return arr;
+    }
+    var aoa = [], kind = [], formulas = []; // kind[r]: 'title'|'sub'|'data'|'blank'; formulas: {r,c,f}
     function push(row, k) { aoa.push(row); kind.push(k); }
-    push(["YÖK TEZ MERKEZİ — İSTATİSTİK ÖZETİ", ""], "title");
-    push(["Toplam tez", rows.length], "sub");
+    function F(r, c, f) { formulas.push({ r: r, c: c, f: f }); }
+    push(["YÖK TEZ MERKEZİ — İSTATİSTİK ÖZETİ (canlı)", "", "", ""], "title");
+    push(["Toplam tez", rows.length, "", ""], "sub");
+    F(1, 1, "COUNTA(Tezler!$A$2:$A$" + N + ")");
     push([""], "blank");
-    function section(title, pairs, limit) {
-      push([title, ""], "title");
-      push(["Değer", "Adet", ""], "sub");
-      var max = pairs.length ? pairs[0][1] : 0;
-      pairs.slice(0, limit || pairs.length).forEach(function (p) { push([p[0], p[1], bar(p[1], max)], "data"); });
-      if (limit && pairs.length > limit) push(["… (+" + (pairs.length - limit) + " diğer)", "", ""], "data");
+    function section(title, colName, pairs, limit) {
+      push([title, "", "", ""], "title");
+      push(["Değer", "Adet", "%", "Grafik"], "sub");
+      var shown = pairs.slice(0, limit || pairs.length);
+      var startR = aoa.length;                             // ilk veri satırı (0-index)
+      var range = rangeOf(colName);
+      shown.forEach(function (p) {
+        var r = aoa.length, r1 = r + 1;
+        push([p.v, p.n, (rows.length ? p.n / rows.length : 0), ""], "data");
+        F(r, 1, p.blank ? ("COUNTBLANK(" + range + ")") : ("COUNTIF(" + range + ",$A" + r1 + ")"));
+        F(r, 2, "IF(" + TOTAL + "=0,0,B" + r1 + "/" + TOTAL + ")");
+      });
+      var endR = aoa.length - 1;                            // son veri satırı (0-index)
+      var s1 = startR + 1, e1 = endR + 1;                   // Excel satır no'ları
+      for (var rr = startR; rr <= endR; rr++) {
+        F(rr, 3, 'REPT("█",ROUND(IF(MAX(B' + s1 + ':B' + e1 + ')=0,0,B' + (rr + 1) + '/MAX(B' + s1 + ':B' + e1 + ')*30),0))');
+      }
+      if (limit && pairs.length > limit) {
+        var dr = aoa.length, dr1 = dr + 1;
+        var others = pairs.slice(limit).reduce(function (a, p) { return a + p.n; }, 0);
+        push(["… (diğer)", others, (rows.length ? others / rows.length : 0), ""], "data");
+        F(dr, 1, TOTAL + "-SUM(B" + s1 + ":B" + e1 + ")");
+        F(dr, 2, "IF(" + TOTAL + "=0,0,B" + dr1 + "/" + TOTAL + ")");
+      }
       push([""], "blank");
     }
-    if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE (ilk 30)", tally(function (r) { return r["Etiket"]; }), 30);
-    section("ANABİLİM DALINA GÖRE (ilk 25)", tally(function (r) { return r["Anabilim Dalı"] || "(belirtilmemiş)"; }), 25);
-    section("YILA GÖRE", tally(function (r) { return r["Yıl"]; }));
-    section("TÜRE GÖRE", tally(function (r) { return r["Tür"]; }));
-    section("DİLE GÖRE", tally(function (r) { return r["Dil"]; }));
-    section("KONUYA GÖRE (ilk 25)", tally(function (r) { return r["Konu"]; }), 25);
-    section("ÜNİVERSİTEYE GÖRE (ilk 25)", tally(function (r) { return cleanUni(r["Üniversite / Yer Bilgisi"]); }), 25);
+    if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE (ilk 30)", "Etiket", tallyCol(function (r) { return r["Etiket"]; }), 30);
+    section("ANABİLİM DALINA GÖRE (ilk 25)", "Anabilim Dalı", tallyCol(function (r) { return r["Anabilim Dalı"]; }), 25);
+    section("YILA GÖRE", "Yıl", tallyCol(function (r) { return r["Yıl"]; }));
+    section("TÜRE GÖRE", "Tür", tallyCol(function (r) { return r["Tür"]; }));
+    section("DİLE GÖRE", "Dil", tallyCol(function (r) { return r["Dil"]; }));
+    section("KONUYA GÖRE (ilk 25)", "Konu", tallyCol(function (r) { return r["Konu"]; }), 25);
+    section("ÜNİVERSİTEYE GÖRE (ilk 25)", UNI_HELPER, tallyCol(function (r) { return cleanUni(r["Üniversite / Yer Bilgisi"]); }), 25);
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{ wch: 45 }, { wch: 10 }, { wch: 34 }];
-    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    // Formülleri yerleştir (hesaplanmış değer cache olarak kalır → formül-görmeyen izleyicilerde de sayı görünür)
+    formulas.forEach(function (o) { var a = XLSX.utils.encode_cell({ r: o.r, c: o.c }); var cell = ws[a] || (ws[a] = { t: "n", v: 0 }); cell.f = o.f; });
+    ws["!cols"] = [{ wch: 45 }, { wch: 9 }, { wch: 8 }, { wch: 34 }];
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
     // stiller
     var titleStyle = { font: { bold: true, color: { rgb: HEAD_TXT }, sz: 12 }, fill: { fgColor: { rgb: GREEN } }, alignment: { vertical: "center" } };
     var subStyle = { font: { bold: true, color: { rgb: GREEN_DK }, sz: 10 }, fill: { fgColor: { rgb: ZEBRA } } };
     var barStyle = { font: { color: { rgb: GREEN }, sz: 10 } };
+    var pctStyle = { font: { sz: 10 }, numFmt: "0.0%" };
     kind.forEach(function (k, r) {
-      if (k === "title") { for (var c = 0; c <= 2; c++) { var a = XLSX.utils.encode_cell({ r: r, c: c }); if (!ws[a]) ws[a] = { t: "s", v: "" }; ws[a].s = titleStyle; } ws["!rows"] = ws["!rows"] || []; ws["!rows"][r] = { hpt: 20 }; }
-      else if (k === "sub") { for (var c2 = 0; c2 <= 2; c2++) { var a2 = XLSX.utils.encode_cell({ r: r, c: c2 }); if (ws[a2]) ws[a2].s = subStyle; } }
-      else if (k === "data") { var ab = XLSX.utils.encode_cell({ r: r, c: 2 }); if (ws[ab]) ws[ab].s = barStyle; }
+      if (k === "title") { for (var c = 0; c <= 3; c++) { var a = XLSX.utils.encode_cell({ r: r, c: c }); if (!ws[a]) ws[a] = { t: "s", v: "" }; ws[a].s = titleStyle; } ws["!rows"] = ws["!rows"] || []; ws["!rows"][r] = { hpt: 20 }; }
+      else if (k === "sub") { for (var c2 = 0; c2 <= 3; c2++) { var a2 = XLSX.utils.encode_cell({ r: r, c: c2 }); if (ws[a2]) ws[a2].s = subStyle; } }
+      else if (k === "data") { var ab = XLSX.utils.encode_cell({ r: r, c: 3 }); if (ws[ab]) ws[ab].s = barStyle; var ap = XLSX.utils.encode_cell({ r: r, c: 2 }); if (ws[ap]) { ws[ap].s = pctStyle; ws[ap].z = "0.0%"; } }
     });
     return ws;
   }
@@ -783,7 +824,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>' + S.btnFilterText + '</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · v1.11</div>';
+      '</div><div class="ytz-foot">mytunca/theses · v1.12</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
