@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.1
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -155,10 +155,16 @@
     }).filter(Boolean);
   }
   function segments(yer) { return String(yer || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean); }
-  function bilimDaliSegment(yer) { return segments(yer).find(function (s) { return /bilim dal/i.test(s) && !/anabilim/i.test(s); }) || ""; }
-  function anabilimDaliSegment(yer) { return segments(yer).find(function (s) { return /anabilim dal/i.test(s); }) || ""; }
-  // "İslam Tarihi Bilim Dalı" -> "İslam Tarihi" ; "TEMEL İSLAM BİLİMLERİ ANABİLİM DALI" -> "TEMEL İSLAM BİLİMLERİ"
-  function cleanDal(seg) { return String(seg || "").replace(/\s*(anabilim|bilim)\s+dal[ıiİI]\s*$/i, "").trim(); }
+  // NOT: Türkçe "İ" (U+0130), /anabilim dal/i gibi ASCII regexlerle eşleşmez. Bu yüzden
+  //      eşleştirme Türkçe küçük harf (lc) + indexOf ile yapılır. lc uzunluğu korur → dilimleme güvenli.
+  function bilimDaliSegment(yer) { return segments(yer).find(function (s) { var n = lc(s); return n.indexOf("bilim dal") > -1 && n.indexOf("anabilim dal") === -1; }) || ""; }
+  function anabilimDaliSegment(yer) { return segments(yer).find(function (s) { return lc(s).indexOf("anabilim dal") > -1; }) || ""; }
+  // "İslam Tarihi Bilim Dalı" -> "İslam Tarihi" ; "İSLAM TARİHİ VE SANATLARI ANABİLİM DALI" -> "İSLAM TARİHİ VE SANATLARI"
+  function cleanDal(seg) {
+    var s = String(seg || "").trim(), n = lc(s);
+    var i = n.indexOf("anabilim dal"); if (i === -1) i = n.indexOf("bilim dal");
+    return i > 0 ? s.slice(0, i).trim() : (i === 0 ? "" : s);
+  }
 
   // İsteğe bağlı kural eşleşmesi (yalnızca kullanıcı kural girdiyse çağrılır)
   function ruleLabel(row, bd, rules) {
@@ -501,7 +507,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.1</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
