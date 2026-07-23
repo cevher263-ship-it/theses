@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.1
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.2
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -159,11 +159,21 @@
   //      eşleştirme Türkçe küçük harf (lc) + indexOf ile yapılır. lc uzunluğu korur → dilimleme güvenli.
   function bilimDaliSegment(yer) { return segments(yer).find(function (s) { var n = lc(s); return n.indexOf("bilim dal") > -1 && n.indexOf("anabilim dal") === -1; }) || ""; }
   function anabilimDaliSegment(yer) { return segments(yer).find(function (s) { return lc(s).indexOf("anabilim dal") > -1; }) || ""; }
-  // "İslam Tarihi Bilim Dalı" -> "İslam Tarihi" ; "İSLAM TARİHİ VE SANATLARI ANABİLİM DALI" -> "İSLAM TARİHİ VE SANATLARI"
+  // Türkçe-duyarlı başharf-büyük (İ/ı doğru; "ve, ile" gibi bağlaçlar küçük). Büyük/küçük harf
+  // farkından doğan yinelenen etiketleri (ör. "TÜRK İSLAM EDEBİYATI" = "Türk İslam Edebiyatı") birleştirir.
+  var TC_SMALL = { "ve": 1, "ile": 1, "için": 1, "veya": 1, "ya": 1, "ki": 1, "da": 1, "de": 1, " deki": 1 };
+  function titleCaseTr(s) {
+    return String(s || "").toLocaleLowerCase("tr").split(/\s+/).filter(Boolean).map(function (w, i) {
+      if (i > 0 && TC_SMALL[w]) return w;
+      return w.split("-").map(function (p) { return p ? p.charAt(0).toLocaleUpperCase("tr") + p.slice(1) : p; }).join("-");
+    }).join(" ");
+  }
+  // "İslam Tarihi Bilim Dalı" -> "İslam Tarihi" ; "İSLAM TARİHİ VE SANATLARI ANABİLİM DALI" -> "İslam Tarihi ve Sanatları"
   function cleanDal(seg) {
     var s = String(seg || "").trim(), n = lc(s);
     var i = n.indexOf("anabilim dal"); if (i === -1) i = n.indexOf("bilim dal");
-    return i > 0 ? s.slice(0, i).trim() : (i === 0 ? "" : s);
+    var out = i > 0 ? s.slice(0, i).trim() : (i === 0 ? "" : s);
+    return titleCaseTr(out);
   }
 
   // İsteğe bağlı kural eşleşmesi (yalnızca kullanıcı kural girdiyse çağrılır)
@@ -507,7 +517,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.1</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.2</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
