@@ -127,7 +127,7 @@
     var rows = new Array(theses.length);
     return runPool(theses, function (t) {
       return Promise.all([fetchDetay(t), fetchPdfLink(t)]).then(function (res) { rows[theses.indexOf(t)] = buildRow(t, res[0] || {}, res[1]); });
-    }, 12, onProgress).then(function () { return rows.filter(Boolean); });
+    }, 6, onProgress).then(function () { return rows.filter(Boolean); });
   }
 
   /* ---------- Otomatik etiketleme (bilim dalı) ----------
