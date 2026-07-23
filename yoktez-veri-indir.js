@@ -48,6 +48,20 @@
     return t.replace(/\uFFFE/g, " ").replace(/ /g, " ").replace(/[ \t]+\n/g, "\n").trim();
   }
   function excelSafe(s) { s = s == null ? "" : String(s); return s.length > 32000 ? s.slice(0, 32000) + " …[kesildi]" : s; }
+  // YÖK dizini "Anahtar Kelime: TR = EN; ...; Keyword: TR = EN; ..." biçiminde gelir.
+  // Etiketleri, "= EN" tekrarını ve çift kaydı ayıklayıp temiz Türkçe anahtar kelimeler döndürür.
+  function cleanKeywords(s) {
+    s = String(s || "").replace(/anahtar\s*kelime\s*:/gi, ";").replace(/keyword\s*:/gi, ";").replace(/\bdizin\s*:/gi, ";");
+    var seen = {}, out = [];
+    s.split(/[|;]/).forEach(function (p) {
+      p = p.trim();
+      if (p.indexOf("=") > -1) p = p.split("=")[0].trim();
+      if (!p) return;
+      var k = p.toLocaleLowerCase("tr");
+      if (!seen[k]) { seen[k] = 1; out.push(p); }
+    });
+    return out.join("; ");
+  }
   function cleanUni(yer) { return String(yer || "").split(" / ")[0].replace(/[\s\/]+$/, "").trim(); }
   function stamp() { return new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-"); }
 
@@ -118,7 +132,7 @@
       "Tez Adı (Orijinal)": t.baslikTR, "Tez Adı (Çeviri)": t.baslikEN,
       "Yazar": t.yazar, "Danışman": stripHtml(detay.danisman).replace(/^Danışman:\s*/i, ""),
       "Üniversite / Yer Bilgisi": stripHtml(detay.yer) || t.yerKisa, "Konu": t.konu,
-      "Dizin (Anahtar Kelimeler)": [stripHtml(detay.anahtarKelimeTr), stripHtml(detay.anahtarKelimeEn)].filter(Boolean).join(" | "),
+      "Dizin (Anahtar Kelimeler)": cleanKeywords(stripHtml(detay.anahtarKelimeTr) + " ; " + stripHtml(detay.anahtarKelimeEn)),
       "Tür": t.tur, "Dil": t.dil, "Yıl": t.yil,
       "Özet (Türkçe)": excelSafe(stripHtml(detay.trOzet)), "Özet (İngilizce)": excelSafe(stripHtml(detay.enOzet)),
       "kayitNo": t.kayitNo, "tezNo (kodlu)": t.tezNo
