@@ -2,6 +2,24 @@
 
 Bu araç, Yükseköğretim Kurulu (YÖK) Tez Merkezi'nden veri indirmek için geliştirilmiştir.
 
+> ### ⚠️ Yeni arayüz sürümü (2026)
+>
+> YÖK Tez Merkezi arayüzü kart tabanlı yeni tasarıma geçtiği için orijinal `dist/index.js` artık çalışmıyor. Yeni arayüze uyarlanmış sürüm bu depodaki [`yoktez-veri-indir.js`](yoktez-veri-indir.js) dosyasıdır.
+>
+> **Kullanım:** Arama sonuç sayfasında (F12 → Console) aşağıdaki satırı yapıştırıp Enter'a basın:
+>
+> ```js
+> document.head.appendChild(Object.assign(document.createElement("script"),{src:"https://cdn.jsdelivr.net/gh/cevher263-ship-it/theses@main/yoktez-veri-indir.js"}))
+> ```
+>
+> Sağ üstte açılan pencereden metaverileri **Excel** olarak veya erişime açık tez metinlerini **PDF/ZIP** olarak indirebilirsiniz.
+>
+> *Orijinal araç ve tüm emek [@mytunca](https://github.com/mytunca/theses)'ya aittir; bu sürüm yalnızca yeni arayüz uyumu için uyarlanmıştır.*
+
+---
+
+_Aşağıdaki orijinal açıklama eski arayüz içindir:_
+
 YÖK Tez Merkezi'nde sorgu yapıldığında, tezlerin metaverileri (tez no, yazar, yıl, tez adı, üniversite, dil, tez türü ve konu) bir tablo halinde listelenir. Ancak, daha ayrıntılı bilgilere erişmek için her bir tezin detay sayfasına tek tek tıklamak gereklidir. Bu araç sizin yerinize bu işlemi hızlı bir şekilde tamamlayarak veriyi indirilebilecek şekilde size sunar.
 
 Bu araç, araştırmacılar ve veri bilimciler için YÖK  Tez Merkezi'nden veri toplamayı ve analiz etmeyi kolaylaştırmayı amaçlamaktadır.
