@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.2
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.3
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -205,16 +205,29 @@
   //  2) İslam Tarihi ve Sanatları bağlamı → içerikten 3 alt-dala ayır (ÖZEL)
   //  3) (varsa) kullanıcı kuralları
   //  4) faktüel: birleşik bilim dalı → anabilim dalı → Belirsiz
+  // Kanonik etiket: İslam sanat/edebiyat/tarih dallarının farklı yazımlarını tek ortak etikette birleştirir.
+  // Farklı disiplinleri (Din Musikisi, İslam Mezhepleri, İslam Medeniyeti, Mevlânâ vb.) DIŞTA bırakır.
+  function canonicalEtiket(label) {
+    var n = lc(label);
+    if (n.indexOf("islam") === -1 && n.indexOf("islâm") === -1) return label; // İslam ile ilgili değilse dokunma
+    if (/musik|mezhep|medeniyet|mevlan|mevlân|tasavvuf|hukuk|iktisat|ekonom|felsefe|kelam|tefsir|hadis|akaid/.test(n)) return label; // ayrı disiplinler
+    if (/sanat/.test(n)) return "Türk İslam Sanatları";                        // İslam Sanatları, Türk-İslam Sanatı, Türk ve İslam Sanatı…
+    if (/edebiyat|edebiyât/.test(n)) return "Türk İslam Edebiyatı";
+    if (/tarih/.test(n)) return "İslam Tarihi";                                // Siyer-i Nebi ve İslam Tarihi…
+    return label;
+  }
   function classifyRow(row, rules) {
     var yer = row["Üniversite / Yer Bilgisi"];
     var bd = bilimDaliSegment(yer), abd = anabilimDaliSegment(yer);
     var bdC = cleanDal(bd), abdC = cleanDal(abd);
-    if (bdC && !isCombinedIslamName(bdC)) return bdC;           // ör. "İslam Tarihi", "Türk Dili ve Edebiyatı", "Temel İslam Bilimleri"
-    if (isIslamTASContext(yer)) return detectIslam3(row);       // ÖZEL: 3 İslam alt-dalı
-    if (rules && rules.length) { var l = ruleLabel(row, bd, rules); if (l) return l; }
-    if (bdC) return bdC;
-    if (abdC) return abdC;
-    return "Belirsiz";
+    var res;
+    if (bdC && !isCombinedIslamName(bdC)) res = bdC;           // ör. "İslam Tarihi", "Türk Dili ve Edebiyatı", "Temel İslam Bilimleri"
+    else if (isIslamTASContext(yer)) res = detectIslam3(row);  // ÖZEL: 3 İslam alt-dalı
+    else if (rules && rules.length && ruleLabel(row, bd, rules)) res = ruleLabel(row, bd, rules);
+    else if (bdC) res = bdC;
+    else if (abdC) res = abdC;
+    else return "Belirsiz";
+    return canonicalEtiket(res);
   }
   var getRules = function () { return parseRules(DEFAULT_RULES); }; // UI hazır olunca panele bağlanır
   function tagRows(rows) {
@@ -517,7 +530,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.2</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.3</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
