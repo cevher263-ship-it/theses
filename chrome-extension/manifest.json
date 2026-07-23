@@ -1,26 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "YÖK Tez Merkezi Veri Kazıma Aracı",
-  "description": "YÖK Tez Merkezi'nden tezlerin metaverilerini ve metin dosyalarını indirmenize olanak tanıyan bir Chrome uzantısı",
-  "author": "Muhammet Yunus TUNCA",
-  "version": "1.0.0",
+  "name": "YÖK Tez Merkezi Veri İndirme Aracı",
+  "description": "YÖK Ulusal Tez Merkezi'nden tez metaverilerini (Excel/CSV/RIS/BibTeX) ve PDF metinlerini toplu indirir. Yeni arayüz uyumlu.",
+  "author": "Muhammet Yunus Tunca (orijinal) - yeni arayüz uyarlaması",
+  "version": "1.4.0",
   "action": {
+    "default_title": "Tez Verilerini İndir",
     "default_icon": "yok-logo.png"
   },
-  "permissions": ["activeTab"],
-  "content_scripts": [
-    {
-      "matches": [
-        "https://tez.yok.gov.tr/UlusalTezMerkezi/tezSorguSonucYeni.jsp"
-      ],
-      "js": ["contentScript.js"],
-      "run_at": "document_end"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["injected.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "icons": { "128": "yok-logo.png" },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://tez.yok.gov.tr/*"],
+  "background": { "service_worker": "background.js" }
 }
