@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.9.1
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.10
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -246,6 +246,34 @@
     else return "Belirsiz";
     return canonicalEtiket(res);
   }
+  /* ---------- Metin neşri (Osmanlı Türkçesi metin çalışmaları) tespiti ---------- */
+  // Başlık kalıbından: inceleme-metin, çeviri yazı, transkripsiyon, edisyon kritik, tenkitli metin…
+  function isMetinNesri(title) {
+    var t = lc(title);
+    return /inceleme\s*[-–—/]\s*metin|metin\s*[-–—/]\s*inceleme|inceleme ve metin|metin ve inceleme|çeviri\s*-?\s*yazı|çeviriyazı|transkripsiyon|edisyon\s*kriti|tenkitli\s*(metin|neşir|neşri)|metin\s*neşri|metin\s*neşir|bağlamlı\s*dizin|gramatikal\s*inceleme|dil\s*incelemesi.*metin|metin.*dil\s*incelemesi|inceleme[\s-]*metin[\s-]*(dizin|sözlük|indeks)/.test(t);
+  }
+  // Deneysel: başlıktan neşredilen eser + müellif tahmini ("X'in Y adlı eseri" vb.)
+  function extractWork(title) {
+    var t = String(title || "");
+    // sondaki/parantez içi "(İnceleme-Metin)" türü ekleri at
+    var core = t.replace(/[\(\[][^)\]]*?(inceleme|metin|çeviri|transkripsiyon|edisyon|tenkit|dizin|sözlük|indeks|gramer|gramatikal)[^)\]]*?[\)\]]/gi, " ")
+      .replace(/[:：]\s*(inceleme|metin|çeviri\s*yazı|transkripsiyon|edisyon\s*kriti|tenkitli\s*metin|dil\s*incelemesi|gramatikal).*$/i, " ")
+      .replace(/\s+/g, " ").trim();
+    var muellif = "", eser = "";
+    var m = core.match(/^(.+?)['’](?:i?n|ı?n|nin|nın|un|ün|nun|nün)\s+(.+?)\s+(?:adlı|isimli|adındaki|başlıklı)\s+(?:eser|kitab|divan|dîvân|mesnevi|risale|risâle|tercüme|şerh)/i);
+    if (m) { muellif = m[1].trim(); eser = m[2].trim(); }
+    else {
+      var m2 = core.match(/^(.+?)\s+(?:adlı|isimli|adındaki|başlıklı)\s+(?:eser|kitab|divan|dîvân|mesnevi|risale|risâle|tercüme|şerh|metin)/i);
+      if (m2) { eser = m2[1].trim(); }
+      else {
+        var m3 = core.match(/^(.+?)['’](?:i?n|ı?n|nin|nın|un|ün|nun|nün)\s+(.+)$/i);
+        if (m3) { muellif = m3[1].trim(); eser = m3[2].trim(); }
+        else { eser = core; }
+      }
+    }
+    return { muellif: muellif, eser: eser };
+  }
+
   var getRules = function () { return parseRules(DEFAULT_RULES); }; // UI hazır olunca panele bağlanır
   function tagRows(rows) {
     var rules = getRules();
@@ -254,13 +282,18 @@
       c["Anabilim Dalı"] = cleanDal(anabilimDaliSegment(c["Üniversite / Yer Bilgisi"]));
       c["Bilim Dalı"] = cleanDal(bilimDaliSegment(c["Üniversite / Yer Bilgisi"]));
       c["Etiket"] = classifyRow(c, rules);
+      var mn = isMetinNesri(c["Tez Adı (Orijinal)"]);
+      c["Metin Neşri"] = mn ? "Evet" : "";
+      var w = mn ? extractWork(c["Tez Adı (Orijinal)"]) : { muellif: "", eser: "" };
+      c["Neşredilen Eser (tahmini)"] = w.eser;
+      c["Müellif (tahmini)"] = w.muellif;
       return c;
     });
   }
 
   /* ---------- Çıktı biçimleri ---------- */
-  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Anabilim Dalı", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
-  var COLUMN_WIDTHS = [55, 22, 24, 26, 30, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
+  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Anabilim Dalı", "Metin Neşri", "Neşredilen Eser (tahmini)", "Müellif (tahmini)", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
+  var COLUMN_WIDTHS = [55, 22, 24, 26, 30, 11, 40, 26, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
 
   function cleanRows(rows) { return rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; }); }
 
@@ -580,6 +613,7 @@
       if (f.uni && (r["Üniversite / Yer Bilgisi"] || "").toLocaleLowerCase("tr").indexOf(f.uni) === -1) return false;
       if (f.konu && (r["Konu"] || "").toLocaleLowerCase("tr").indexOf(f.konu) === -1) return false;
       if (f.onlyPdf && !r["PDF İndirme Linki"]) return false;
+      if (f.metinNesri && !isMetinNesri(r["Tez Adı (Orijinal)"])) return false;
       return true;
     });
   }
@@ -657,12 +691,13 @@
           '<label>Üniversite / Yer içerir</label><input id="ytz-f-uni" placeholder="ankara üniversitesi…">' +
           '<label>Konu içerir</label><input id="ytz-f-konu" placeholder="bilgisayar…">' +
           '<label style="display:flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-f-pdf" style="width:auto;"> Sadece PDF\'i olanlar</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-f-metin" style="width:auto;"> Sadece metin neşri tezleri <span style="color:#666;">(inceleme-metin, çeviri yazı, edisyon kritik…)</span></label>' +
           '<button class="ytz-btn" id="ytz-filter">Filtreyi uygula</button>' +
           '<button class="ytz-btn" id="ytz-filter-export" disabled>Eşleşenleri indir (seçili biçim)</button>' +
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.9.1</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.10</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
@@ -725,7 +760,7 @@
         etiket: $("#ytz-f-etiket").value.trim().toLocaleLowerCase("tr"),
         tur: $("#ytz-f-tur").value.trim().toLocaleLowerCase("tr"), dil: $("#ytz-f-dil").value.trim().toLocaleLowerCase("tr"),
         uni: $("#ytz-f-uni").value.trim().toLocaleLowerCase("tr"), konu: $("#ytz-f-konu").value.trim().toLocaleLowerCase("tr"),
-        onlyPdf: $("#ytz-f-pdf").checked
+        onlyPdf: $("#ytz-f-pdf").checked, metinNesri: $("#ytz-f-metin").checked
       };
       dbGetAll().then(function (all) {
         if (!all.length) { alert("Önce biriktirin (Biriktirme bölümü)."); return; }
