@@ -18,6 +18,17 @@ Bu araç, Yükseköğretim Kurulu (YÖK) Tez Merkezi'nden veri indirmek için ge
 >
 > *Orijinal araç ve tüm emek [@mytunca](https://github.com/mytunca/theses)'ya aittir; bu sürüm yalnızca yeni arayüz uyumu için uyarlanmıştır.*
 
+### 🧩 Chrome Eklentisi olarak kullanım (en pratik — tek tık)
+
+Konsola kod yapıştırmadan, tek tıkla çalışır:
+
+1. [`YOKTez-Eklenti.zip`](YOKTez-Eklenti.zip) dosyasını indirip bir klasöre çıkarın (ya da `chrome-extension` klasörünü indirin).
+2. Chrome'da `chrome://extensions/` adresine gidin, sağ üstten **Geliştirici modu**nu açın.
+3. **Paketlenmemiş öğe yükle** → çıkardığınız klasörü seçin.
+4. YÖK Tez arama **sonuç sayfasında** araç çubuğundaki uzantı simgesine tıklayın → araç açılır.
+
+> Not: Eklenti yalnızca `tez.yok.gov.tr` üzerinde çalışır, başka veri toplamaz. Kod, konsol sürümüyle birebir aynıdır (`yoktez-veri-indir.js`). Excel/ZIP kütüphaneleri çalışma anında CDN'den yüklenir (internet gerekir).
+
 ---
 
 _Aşağıdaki orijinal açıklama eski arayüz içindir:_
