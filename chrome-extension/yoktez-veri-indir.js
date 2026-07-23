@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.10.1
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.11
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -489,7 +489,7 @@
 
   /* ---------- Biçim seçimine göre dışa aktar ---------- */
   function exportData(rows, prefix, format) {
-    if (!rows.length) { alert("Dışa aktarılacak tez yok."); return; }
+    if (!rows.length) { alert(T().alertNoExport); return; }
     var data = tagRows(rows); // temizle + Etiket/Bilim Dalı sütunlarını ekle
     if (format === "csv") exportCSV(data, prefix);
     else if (format === "json") exportJSON(data, prefix);
@@ -556,7 +556,7 @@
       '<p class="foot">mytunca/theses · yeni arayüz — Özet Rapor (yazdır → PDF olarak kaydedebilirsiniz)</p></body></html>';
   }
   function exportReport(rows, kapsam) {
-    if (!rows.length) { alert("Rapor için tez yok."); return; }
+    if (!rows.length) { alert(T().alertReport); return; }
     var html = buildReportHTML(tagRows(rows), kapsam);
     var blob = new Blob([html], { type: "text/html;charset=utf-8" });
     var url = URL.createObjectURL(blob);
@@ -602,7 +602,7 @@
       });
     });
     return seq.then(function () {
-      if (downloaded === 0) { alert("İndirilebilir (erişime açık) PDF bulunamadı."); return; }
+      if (downloaded === 0) { alert(T().alertNoPdf); return; }
       if (chunkSize > 0) return zip.generateAsync({ type: "blob" }).then(function (c) { chunkIndex++; saveAs(c, "Tez_Metinleri_Part_" + chunkIndex + ".zip"); });
     });
   }
@@ -632,6 +632,76 @@
       return true;
     });
   }
+
+  /* ===================================================================== */
+  /*  Ayarlar (localStorage) + i18n (TR/EN)                                */
+  /* ===================================================================== */
+  var SETTINGS_KEY = "ytzSettings";
+  function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } }
+  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
+  var settings = loadSettings();
+  var lang = (settings.lang === "en") ? "en" : "tr";
+  function T() { return LANG[lang]; }
+  var LANG = {
+    tr: {
+      head: "Tez Merkezi · Veri İndir", close: "Kapat", outFormat: "Çıktı biçimi",
+      optXlsx: "Excel (.xlsx) — filtreli + istatistik", optCsv: "CSV (.csv)", optJson: "JSON (.json)",
+      optRis: "RIS — kaynakça (Zotero/Mendeley/EndNote)", optBib: "BibTeX — kaynakça", optWos: "bibliometrix / biblioshiny (WoS düz-metin)",
+      pdflink: 'Excel\'e PDF indirme linki sütununu da ekle <span style="color:#b02a37;">(≈2× yavaşlar)</span>',
+      wosAdvisor: 'Danışmanı 2. yazar yap <span style="color:#666;">(bibliometrix işbirliği/danışman ağı için; yazar üretkenliği metriklerini karıştırır)</span>',
+      wosNoab: 'Özetsiz (hafif) <span style="color:#666;">— büyük korpusta bibliometrix dönüştürmesini hızlandırır; tematik/kelime/üretim analizi için özet gerekmez</span>',
+      secPage: "Bu sayfadaki sonuçlar", btnMeta: "Bu sayfayı indir (seçili biçim)", btnText: "Bu sayfanın metinleri (PDF·ZIP)", btnReport: "📊 Özet rapor (grafikli)",
+      secAccum: "Biriktirme (2000 sınırını aşmak için)", accumDesc: "Aramayı yıl yıl daraltıp her seferinde biriktirin; sonda hepsini tek dosyada indirin. Tekrar eden tezler otomatik ayıklanır.",
+      btnAccum: "Bu aramayı biriktir", btnExportAll: function (c) { return "Tümünü indir — " + c + " tez (seçili biçim)"; }, btnTextAll: "Biriktirilenlerin metinleri (PDF·ZIP)",
+      btnReportAll: "📊 Biriktirilenlerin özet raporu", btnBackup: "Yedekle (JSON)", btnRestore: "Geri yükle", btnClear: "Biriktirmeyi temizle",
+      secTag: "Etiketleme (bilim dalı)",
+      tagDesc: 'Çıktıya otomatik <b>Etiket</b>, <b>Bilim Dalı</b>, <b>Anabilim Dalı</b> sütunları eklenir.<br>• <b>Genel:</b> Etiket = bilim dalı (varsa) → anabilim dalı → yoksa <b>Belirsiz</b>.<br>• <b>Özel:</b> <b>İslam Tarihi</b>, <b>Türk İslam Edebiyatı</b>, <b>Türk İslam Sanatları</b> için bilim dalı eksik/birleşik olsa da içerikten mutlaka birine atanır.<br><b>İsteğe bağlı</b>: başka alanları da içerikten ayırmak için kural yazın — <b>Etiket = kelime1, kelime2, …</b> (boş bırakılabilir).',
+      rulesPh: "Örnek (isteğe bağlı):\nTürk İslam Edebiyatı = divan edebiyat, mesnevi, na't, mevlid\nTürk İslam Sanatları = hüsn-i hat, tezhip, minyatür, çini\nİslam Tarihi = siyer, sahabe, emevi, abbasi, endülüs",
+      secFilter: "Filtrele (biriktirilenler üzerinde)", fYilMin: "Yıl (min)", fYilMax: "Yıl (max)", fEtiket: "Etiket içerir", fEtiketPh: "islam tarihi…",
+      fTur: "Tür içerir", fTurPh: "doktora…", fDil: "Dil içerir", fDilPh: "türkçe…", fUni: "Üniversite / Yer içerir", fUniPh: "ankara üniversitesi…", fKonu: "Konu içerir", fKonuPh: "bilgisayar…",
+      fPdf: "Sadece PDF'i olanlar", fMetin: 'Sadece metin neşri tezleri <span style="color:#666;">(inceleme-metin, çeviri yazı, edisyon kritik…)</span>',
+      btnFilter: "Filtreyi uygula", btnFilterExport: "Eşleşenleri indir (seçili biçim)", btnFilterText: "Eşleşenlerin metinleri (PDF·ZIP)",
+      warnMsg: function (t, s) { return '⚠️ Bu aramada toplam <b>' + t + '</b> tez var, yalnızca <b>' + s + '</b> tanesi listeleniyor. Tümünü almak için aramayı (örn. yıl yıl) daraltıp <b>Biriktirme</b> bölümünü kullanın.'; },
+      infoListed: function (n) { return n + " tez bu sayfada listeleniyor."; }, infoNoPage: "Bu sayfada tez yok (aracı SONUÇ sayfasında çalıştırın).", infoAccum: function (c) { return "\nBiriktirilen toplam: " + c + " tez."; },
+      mMetaLoading: "Metaveriler indiriliyor…", mMetaProg: function (d, n) { return "Metaveri: " + d + " / " + n; }, mDone: function (n) { return "Bitti · " + n + " tez aktarıldı."; },
+      mFailNote: function (k) { return " (" + k + " tezde sunucu yoğunluğu nedeniyle veri eksik kalmış olabilir.)"; }, mTextLoading: "Metinler indiriliyor…", mCompleted: "\nTamamlandı.",
+      mAccumAdding: "Biriktirmeye ekleniyor…", mAccumAdded: "Bu aramadaki tezler biriktirmeye eklendi.", mPreparing: "Hazırlanıyor…", mReportPreparing: "Rapor hazırlanıyor…", mReportDone: "Özet rapor oluşturuldu (yeni sekme).",
+      mTextAllLoading: "Biriktirilenlerin metinleri indiriliyor…", mBackupDone: function (n) { return n + " tez JSON olarak yedeklendi."; }, mRestoring: "Geri yükleniyor…", mRestored: function (n) { return n + " tez geri yüklendi (tekrarlar ayıklandı)."; },
+      mInvalidBackup: "Geçersiz yedek dosyası.", mClearConfirm: "Biriktirilen tüm veriler silinsin mi? Geri alınamaz.", mCleared: "Biriktirme temizlendi.", mNeedAccum: "Önce biriktirin (Biriktirme bölümü).",
+      mFilterMatched: function (m, a) { return m + " / " + a + " tez filtreye uydu."; }, mFilterExported: function (m) { return m + " eşleşen tez aktarıldı."; }, mFilterTextLoading: "Eşleşenlerin metinleri indiriliyor…",
+      reportScopePage: "Bu sayfadaki arama", reportScopeAccum: "Biriktirilen tüm aramalar",
+      alertNoExport: "Dışa aktarılacak tez yok.", alertNoPdf: "İndirilebilir (erişime açık) PDF bulunamadı.", alertReport: "Rapor için tez yok.", depsError: "Gerekli kütüphaneler yüklenemedi:\n"
+    },
+    en: {
+      head: "Thesis Center · Download Data", close: "Close", outFormat: "Output format",
+      optXlsx: "Excel (.xlsx) — filtered + statistics", optCsv: "CSV (.csv)", optJson: "JSON (.json)",
+      optRis: "RIS — references (Zotero/Mendeley/EndNote)", optBib: "BibTeX — references", optWos: "bibliometrix / biblioshiny (WoS plaintext)",
+      pdflink: 'Also add a PDF download-link column to Excel <span style="color:#b02a37;">(≈2× slower)</span>',
+      wosAdvisor: 'Add advisor as 2nd author <span style="color:#666;">(for bibliometrix collaboration/advisor network; pollutes author-productivity metrics)</span>',
+      wosNoab: 'No abstracts (light) <span style="color:#666;">— greatly speeds up bibliometrix conversion for large corpora; abstracts not needed for keyword/thematic/production analysis</span>',
+      secPage: "Results on this page", btnMeta: "Download this page (selected format)", btnText: "Full texts of this page (PDF·ZIP)", btnReport: "📊 Summary report (charts)",
+      secAccum: "Accumulate (to exceed the 2000 limit)", accumDesc: "Narrow your search (e.g. year by year) and accumulate each time; download everything in one file at the end. Duplicate theses are removed automatically.",
+      btnAccum: "Accumulate this search", btnExportAll: function (c) { return "Download all — " + c + " theses (selected format)"; }, btnTextAll: "Full texts of accumulated (PDF·ZIP)",
+      btnReportAll: "📊 Summary report of accumulated", btnBackup: "Back up (JSON)", btnRestore: "Restore", btnClear: "Clear accumulation",
+      secTag: "Labeling (discipline)",
+      tagDesc: 'The output automatically gets <b>Label</b>, <b>Discipline (Bilim Dalı)</b>, <b>Department (Anabilim Dalı)</b> columns.<br>• <b>General:</b> Label = discipline (if any) → department → otherwise <b>Undetermined</b>.<br>• <b>Special:</b> for <b>İslam Tarihi</b>, <b>Türk İslam Edebiyatı</b>, <b>Türk İslam Sanatları</b> it is assigned from content even if the discipline is missing/combined.<br><b>Optional</b>: to split other fields from content, write rules — <b>Label = word1, word2, …</b> (may be left empty).',
+      rulesPh: "Example (optional):\nLabel A = keyword1, keyword2\nLabel B = keyword3, keyword4",
+      secFilter: "Filter (on accumulated)", fYilMin: "Year (min)", fYilMax: "Year (max)", fEtiket: "Label contains", fEtiketPh: "e.g. islam tarihi…",
+      fTur: "Type contains", fTurPh: "doktora…", fDil: "Language contains", fDilPh: "türkçe…", fUni: "University / Place contains", fUniPh: "ankara üniversitesi…", fKonu: "Subject contains", fKonuPh: "computer…",
+      fPdf: "Only those with a PDF", fMetin: 'Only text-edition theses <span style="color:#666;">(inceleme-metin, çeviri yazı, edisyon kritik…)</span>',
+      btnFilter: "Apply filter", btnFilterExport: "Download matches (selected format)", btnFilterText: "Full texts of matches (PDF·ZIP)",
+      warnMsg: function (t, s) { return '⚠️ This search has <b>' + t + '</b> theses in total, but only <b>' + s + '</b> are listed. To get them all, narrow the search (e.g. by year) and use the <b>Accumulate</b> section.'; },
+      infoListed: function (n) { return n + " theses listed on this page."; }, infoNoPage: "No theses on this page (run the tool on the RESULTS page).", infoAccum: function (c) { return "\nAccumulated total: " + c + " theses."; },
+      mMetaLoading: "Downloading metadata…", mMetaProg: function (d, n) { return "Metadata: " + d + " / " + n; }, mDone: function (n) { return "Done · " + n + " theses exported."; },
+      mFailNote: function (k) { return " (" + k + " theses may have incomplete data due to server load.)"; }, mTextLoading: "Downloading full texts…", mCompleted: "\nCompleted.",
+      mAccumAdding: "Adding to accumulation…", mAccumAdded: "Theses from this search added to accumulation.", mPreparing: "Preparing…", mReportPreparing: "Preparing report…", mReportDone: "Summary report created (new tab).",
+      mTextAllLoading: "Downloading full texts of accumulated…", mBackupDone: function (n) { return n + " theses backed up as JSON."; }, mRestoring: "Restoring…", mRestored: function (n) { return n + " theses restored (duplicates removed)."; },
+      mInvalidBackup: "Invalid backup file.", mClearConfirm: "Delete all accumulated data? This cannot be undone.", mCleared: "Accumulation cleared.", mNeedAccum: "Accumulate first (Accumulate section).",
+      mFilterMatched: function (m, a) { return m + " / " + a + " theses matched the filter."; }, mFilterExported: function (m) { return m + " matching theses exported."; }, mFilterTextLoading: "Downloading full texts of matches…",
+      reportScopePage: "This page's search", reportScopeAccum: "All accumulated searches",
+      alertNoExport: "No theses to export.", alertNoPdf: "No downloadable (open-access) PDF found.", alertReport: "No theses for the report.", depsError: "Required libraries could not be loaded:\n"
+    }
+  };
 
   /* ===================================================================== */
   /*  Arayüz                                                               */
@@ -665,66 +735,84 @@
       "#ytz-panel .ytz-foot{font-size:10px;color:#999;text-align:right;padding:0 16px 10px;}";
     document.head.appendChild(css);
 
+    var S = LANG[lang];
     var overlay = document.createElement("div"); overlay.id = "ytz-overlay";
     var panel = document.createElement("div"); panel.id = "ytz-panel";
-    var warnHtml = (warn && warn.total > warn.shown)
-      ? '<div class="ytz-warn">⚠️ Bu aramada toplam <b>' + warn.total + '</b> tez var, yalnızca <b>' + warn.shown + '</b> tanesi listeleniyor. Tümünü almak için aramayı (örn. yıl yıl) daraltıp <b>Biriktirme</b> bölümünü kullanın.</div>'
-      : '';
+    var warnHtml = (warn && warn.total > warn.shown) ? '<div class="ytz-warn">' + S.warnMsg(warn.total, warn.shown) + '</div>' : '';
+    var langTgl = '<span class="ytz-lang" style="font-size:12px;font-weight:400;cursor:pointer;opacity:.92;">' + (lang === "tr" ? 'TR | <u>EN</u>' : '<u>TR</u> | EN') + '</span>';
     panel.innerHTML =
-      '<div class="ytz-head"><span>Tez Merkezi · Veri İndir</span><span class="ytz-x" title="Kapat">×</span></div>' +
+      '<div class="ytz-head"><span>' + S.head + '</span><span style="display:flex;gap:12px;align-items:center;">' + langTgl + '<span class="ytz-x" title="' + S.close + '">×</span></span></div>' +
       '<div class="ytz-body">' +
         '<p id="ytz-info"></p>' + warnHtml +
-        '<label>Çıktı biçimi</label>' +
-        '<select id="ytz-format"><option value="xlsx">Excel (.xlsx) — filtreli + istatistik</option><option value="csv">CSV (.csv)</option><option value="json">JSON (.json)</option><option value="ris">RIS — kaynakça (Zotero/Mendeley/EndNote)</option><option value="bib">BibTeX — kaynakça</option><option value="wos">bibliometrix / biblioshiny (WoS düz-metin)</option></select>' +
-        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="ytz-pdflink" style="width:auto;"> Excel\'e PDF indirme linki sütununu da ekle <span style="color:#b02a37;">(≈2× yavaşlar)</span></label>' +
-        '<label id="ytz-wos-adv-row" style="display:none;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-wos-advisor" style="width:auto;"> Danışmanı 2. yazar yap <span style="color:#666;">(bibliometrix işbirliği/danışman ağı için; yazar üretkenliği metriklerini karıştırır)</span></label>' +
-        '<label id="ytz-wos-noab-row" style="display:none;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-wos-noab" style="width:auto;"> Özetsiz (hafif) <span style="color:#666;">— büyük korpusta bibliometrix dönüştürmesini çok hızlandırır; tematik/kelime/üretim analizi için özet gerekmez</span></label>' +
-        '<div class="ytz-sec"><h4>Bu sayfadaki sonuçlar</h4>' +
-          '<button class="ytz-btn" id="ytz-meta">Bu sayfayı indir (seçili biçim)</button>' +
-          '<button class="ytz-btn sec" id="ytz-text">Bu sayfanın metinleri (PDF·ZIP)</button>' +
-          '<button class="ytz-btn" id="ytz-report" style="background:#6b3fa0">📊 Özet rapor (grafikli)</button>' +
+        '<label>' + S.outFormat + '</label>' +
+        '<select id="ytz-format"><option value="xlsx">' + S.optXlsx + '</option><option value="csv">' + S.optCsv + '</option><option value="json">' + S.optJson + '</option><option value="ris">' + S.optRis + '</option><option value="bib">' + S.optBib + '</option><option value="wos">' + S.optWos + '</option></select>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="ytz-pdflink" style="width:auto;"> ' + S.pdflink + '</label>' +
+        '<label id="ytz-wos-adv-row" style="display:none;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-wos-advisor" style="width:auto;"> ' + S.wosAdvisor + '</label>' +
+        '<label id="ytz-wos-noab-row" style="display:none;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-wos-noab" style="width:auto;"> ' + S.wosNoab + '</label>' +
+        '<div class="ytz-sec"><h4>' + S.secPage + '</h4>' +
+          '<button class="ytz-btn" id="ytz-meta">' + S.btnMeta + '</button>' +
+          '<button class="ytz-btn sec" id="ytz-text">' + S.btnText + '</button>' +
+          '<button class="ytz-btn" id="ytz-report" style="background:#6b3fa0">' + S.btnReport + '</button>' +
         '</div>' +
-        '<div class="ytz-sec"><h4>Biriktirme (2000 sınırını aşmak için)</h4>' +
-          '<p style="font-size:11.5px;color:#555;">Aramayı yıl yıl daraltıp her seferinde biriktirin; sonda hepsini tek dosyada indirin. Tekrar eden tezler otomatik ayıklanır.</p>' +
-          '<button class="ytz-btn" id="ytz-accum">Bu aramayı biriktir</button>' +
-          '<button class="ytz-btn" id="ytz-exportall">Tümünü indir (seçili biçim)</button>' +
-          '<button class="ytz-btn sec" id="ytz-textall">Biriktirilenlerin metinleri (PDF·ZIP)</button>' +
-          '<button class="ytz-btn" id="ytz-reportall" style="background:#6b3fa0">📊 Biriktirilenlerin özet raporu</button>' +
-          '<div class="row"><button class="ytz-btn gray" id="ytz-backup">Yedekle (JSON)</button><button class="ytz-btn gray" id="ytz-restore">Geri yükle</button></div>' +
-          '<button class="ytz-btn warn" id="ytz-clear">Biriktirmeyi temizle</button>' +
+        '<div class="ytz-sec"><h4>' + S.secAccum + '</h4>' +
+          '<p style="font-size:11.5px;color:#555;">' + S.accumDesc + '</p>' +
+          '<button class="ytz-btn" id="ytz-accum">' + S.btnAccum + '</button>' +
+          '<button class="ytz-btn" id="ytz-exportall">' + S.btnExportAll(0) + '</button>' +
+          '<button class="ytz-btn sec" id="ytz-textall">' + S.btnTextAll + '</button>' +
+          '<button class="ytz-btn" id="ytz-reportall" style="background:#6b3fa0">' + S.btnReportAll + '</button>' +
+          '<div class="row"><button class="ytz-btn gray" id="ytz-backup">' + S.btnBackup + '</button><button class="ytz-btn gray" id="ytz-restore">' + S.btnRestore + '</button></div>' +
+          '<button class="ytz-btn warn" id="ytz-clear">' + S.btnClear + '</button>' +
           '<input type="file" id="ytz-file" accept=".json" style="display:none;">' +
         '</div>' +
-        '<div class="ytz-sec"><h4>Etiketleme (bilim dalı)</h4>' +
-          '<p style="font-size:11.5px;color:#555;">Çıktıya otomatik <b>Etiket</b>, <b>Bilim Dalı</b>, <b>Anabilim Dalı</b> sütunları eklenir.<br>• <b>Genel:</b> Etiket = bilim dalı (varsa) → anabilim dalı → yoksa <b>Belirsiz</b>.<br>• <b>Özel:</b> <b>İslam Tarihi</b>, <b>Türk İslam Edebiyatı</b>, <b>Türk İslam Sanatları</b> için bilim dalı eksik/birleşik olsa da içerikten mutlaka birine atanır.<br><b>İsteğe bağlı</b>: başka alanları da içerikten ayırmak için kural yazın — <b>Etiket = kelime1, kelime2, …</b> (boş bırakılabilir).</p>' +
-          '<textarea id="ytz-rules" spellcheck="false" placeholder="Örnek (isteğe bağlı):&#10;Türk İslam Edebiyatı = divan edebiyat, mesnevi, na\'t, mevlid&#10;Türk İslam Sanatları = hüsn-i hat, tezhip, minyatür, çini&#10;İslam Tarihi = siyer, sahabe, emevi, abbasi, endülüs"></textarea>' +
+        '<div class="ytz-sec"><h4>' + S.secTag + '</h4>' +
+          '<p style="font-size:11.5px;color:#555;">' + S.tagDesc + '</p>' +
+          '<textarea id="ytz-rules" spellcheck="false"></textarea>' +
         '</div>' +
-        '<div class="ytz-sec"><h4>Filtrele (biriktirilenler üzerinde)</h4>' +
-          '<div class="row"><div><label>Yıl (min)</label><input id="ytz-f-yil1" type="number" placeholder="örn. 2015"></div>' +
-          '<div><label>Yıl (max)</label><input id="ytz-f-yil2" type="number" placeholder="örn. 2024"></div></div>' +
-          '<label>Etiket içerir</label><input id="ytz-f-etiket" placeholder="islam tarihi… (yukarıdaki kurallara göre)">' +
-          '<div class="row"><div><label>Tür içerir</label><input id="ytz-f-tur" placeholder="doktora…"></div>' +
-          '<div><label>Dil içerir</label><input id="ytz-f-dil" placeholder="türkçe…"></div></div>' +
-          '<label>Üniversite / Yer içerir</label><input id="ytz-f-uni" placeholder="ankara üniversitesi…">' +
-          '<label>Konu içerir</label><input id="ytz-f-konu" placeholder="bilgisayar…">' +
-          '<label style="display:flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-f-pdf" style="width:auto;"> Sadece PDF\'i olanlar</label>' +
-          '<label style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-f-metin" style="width:auto;"> Sadece metin neşri tezleri <span style="color:#666;">(inceleme-metin, çeviri yazı, edisyon kritik…)</span></label>' +
-          '<button class="ytz-btn" id="ytz-filter">Filtreyi uygula</button>' +
-          '<button class="ytz-btn" id="ytz-filter-export" disabled>Eşleşenleri indir (seçili biçim)</button>' +
-          '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
+        '<div class="ytz-sec"><h4>' + S.secFilter + '</h4>' +
+          '<div class="row"><div><label>' + S.fYilMin + '</label><input id="ytz-f-yil1" type="number" placeholder="2015"></div>' +
+          '<div><label>' + S.fYilMax + '</label><input id="ytz-f-yil2" type="number" placeholder="2024"></div></div>' +
+          '<label>' + S.fEtiket + '</label><input id="ytz-f-etiket" placeholder="' + S.fEtiketPh + '">' +
+          '<div class="row"><div><label>' + S.fTur + '</label><input id="ytz-f-tur" placeholder="' + S.fTurPh + '"></div>' +
+          '<div><label>' + S.fDil + '</label><input id="ytz-f-dil" placeholder="' + S.fDilPh + '"></div></div>' +
+          '<label>' + S.fUni + '</label><input id="ytz-f-uni" placeholder="' + S.fUniPh + '">' +
+          '<label>' + S.fKonu + '</label><input id="ytz-f-konu" placeholder="' + S.fKonuPh + '">' +
+          '<label style="display:flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="ytz-f-pdf" style="width:auto;"> ' + S.fPdf + '</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="checkbox" id="ytz-f-metin" style="width:auto;"> ' + S.fMetin + '</label>' +
+          '<button class="ytz-btn" id="ytz-filter">' + S.btnFilter + '</button>' +
+          '<button class="ytz-btn" id="ytz-filter-export" disabled>' + S.btnFilterExport + '</button>' +
+          '<button class="ytz-btn sec" id="ytz-filter-text" disabled>' + S.btnFilterText + '</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.10.1</div>';
+      '</div><div class="ytz-foot">mytunca/theses · v1.11</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
-    $("#ytz-rules").value = DEFAULT_RULES;
+    $("#ytz-rules").placeholder = S.rulesPh;
     getRules = function () { return parseRules(($("#ytz-rules").value || "").trim() || DEFAULT_RULES); };
     var elInfo = $("#ytz-info"), prog = $("#ytz-prog"), bar = $("#ytz-bar"), plabel = $("#ytz-plabel");
     var fmt = function () { return $("#ytz-format").value; };
-    // Danışman-2.-yazar kutusu yalnızca bibliometrix (wos) biçiminde görünür
-    $("#ytz-format").onchange = function () { var w = (fmt() === "wos") ? "flex" : "none"; $("#ytz-wos-adv-row").style.display = w; $("#ytz-wos-noab-row").style.display = w; };
-    $("#ytz-wos-advisor").onchange = function () { wosAdvisorAsAuthor = this.checked; };
-    $("#ytz-wos-noab").onchange = function () { wosNoAbstract = this.checked; };
+
+    // --- Ayarları geri yükle ---
+    if (settings.format) $("#ytz-format").value = settings.format;
+    $("#ytz-pdflink").checked = !!settings.pdflink;
+    $("#ytz-wos-advisor").checked = !!settings.wosAdvisor; wosAdvisorAsAuthor = !!settings.wosAdvisor;
+    $("#ytz-wos-noab").checked = !!settings.wosNoAb; wosNoAbstract = !!settings.wosNoAb;
+    $("#ytz-rules").value = (typeof settings.rules === "string") ? settings.rules : DEFAULT_RULES;
+    function persist() {
+      settings.lang = lang; settings.format = $("#ytz-format").value; settings.pdflink = $("#ytz-pdflink").checked;
+      settings.wosAdvisor = $("#ytz-wos-advisor").checked; settings.wosNoAb = $("#ytz-wos-noab").checked; settings.rules = $("#ytz-rules").value;
+      saveSettings();
+    }
+    // wos ek kutuları yalnızca bibliometrix biçiminde görünür
+    function syncWosRows() { var w = (fmt() === "wos") ? "flex" : "none"; $("#ytz-wos-adv-row").style.display = w; $("#ytz-wos-noab-row").style.display = w; }
+    syncWosRows();
+    $("#ytz-format").onchange = function () { syncWosRows(); persist(); };
+    $("#ytz-pdflink").onchange = persist;
+    $("#ytz-wos-advisor").onchange = function () { wosAdvisorAsAuthor = this.checked; persist(); };
+    $("#ytz-wos-noab").onchange = function () { wosNoAbstract = this.checked; persist(); };
+    $("#ytz-rules").oninput = persist;
+    // Dil değiştir (TR/EN) → ayarı kaydet, paneli yeniden kur
+    $(".ytz-lang").onclick = function () { persist(); lang = (lang === "tr") ? "en" : "tr"; settings.lang = lang; saveSettings(); close(); window.__yokTezAraci__ = buildUI(); window.__yokTezAraci__.open(); };
     var allBtns = Array.from(panel.querySelectorAll("button.ytz-btn"));
     function setBusy(b) { allBtns.forEach(function (x) { x.disabled = b; }); prog.style.display = "block"; }
     function idle() { allBtns.forEach(function (x) { x.disabled = false; }); refreshInfo(); }
@@ -733,8 +821,8 @@
     var filtered = null;
     function refreshInfo() {
       dbCount().then(function (c) {
-        elInfo.textContent = (theses.length ? theses.length + " tez bu sayfada listeleniyor." : "Bu sayfada tez yok (aracı SONUÇ sayfasında çalıştırın).") + "\nBiriktirilen toplam: " + c + " tez.";
-        $("#ytz-exportall").textContent = "Tümünü indir — " + c + " tez (seçili biçim)";
+        elInfo.textContent = (theses.length ? S.infoListed(theses.length) : S.infoNoPage) + S.infoAccum(c);
+        $("#ytz-exportall").textContent = S.btnExportAll(c);
         var noPage = theses.length === 0, empty = c === 0;
         $("#ytz-meta").disabled = $("#ytz-text").disabled = $("#ytz-accum").disabled = $("#ytz-report").disabled = noPage;
         $("#ytz-exportall").disabled = $("#ytz-textall").disabled = $("#ytz-clear").disabled = $("#ytz-backup").disabled = $("#ytz-reportall").disabled = empty;
@@ -746,30 +834,30 @@
     overlay.onclick = close; $(".ytz-x").onclick = close;
 
     var pageRows = null, pageRowsPdf = false, pageFailed = 0;
-    function failNote() { return pageFailed > 0 ? " (" + pageFailed + " tezde sunucu yoğunluğu nedeniyle veri eksik kalmış olabilir.)" : ""; }
+    function failNote() { return pageFailed > 0 ? S.mFailNote(pageFailed) : ""; }
     function getPageRows() {
       var wantPdf = $("#ytz-pdflink").checked;
       if (pageRows && pageRowsPdf === wantPdf) return Promise.resolve(pageRows);
-      setL("Metaveriler indiriliyor…");
-      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }, wantPdf).then(function (res) { pageRows = res.rows; pageRowsPdf = wantPdf; pageFailed = res.failed; return res.rows; });
+      setL(S.mMetaLoading);
+      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL(S.mMetaProg(d, n)); }, wantPdf).then(function (res) { pageRows = res.rows; pageRowsPdf = wantPdf; pageFailed = res.failed; return res.rows; });
     }
 
-    $("#ytz-report").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportReport(r, "Bu sayfadaki arama"); setL("Özet rapor oluşturuldu (yeni sekme)." + failNote()); idle(); }); };
-    $("#ytz-reportall").onclick = function () { setBusy(true); setL("Rapor hazırlanıyor…"); dbGetAll().then(function (r) { exportReport(r, "Biriktirilen tüm aramalar"); setL("Özet rapor oluşturuldu (yeni sekme)."); idle(); }); };
-    $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL("Bitti · " + r.length + " tez aktarıldı." + failNote()); idle(); }); };
-    $("#ytz-text").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setP(0); setL("Metinler indiriliyor…"); return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
-    $("#ytz-accum").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setL("Biriktirmeye ekleniyor…"); return dbPutRows(r); }).then(function () { setL("Bu aramadaki tezler biriktirmeye eklendi." + failNote()); idle(); }); };
-    $("#ytz-exportall").onclick = function () { setBusy(true); setL("Hazırlanıyor…"); dbGetAll().then(function (r) { exportData(r, "Tez_BIRIKIM", fmt()); setL("Bitti · " + r.length + " tez aktarıldı."); idle(); }); };
-    $("#ytz-textall").onclick = function () { setBusy(true); setP(0); setL("Biriktirilenlerin metinleri indiriliyor…"); dbGetAll().then(function (r) { return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
-    $("#ytz-backup").onclick = function () { dbGetAll().then(function (r) { saveText(JSON.stringify(r), "Tez_Birikim_Yedek_" + stamp() + ".json", "application/json"); setL(r.length + " tez JSON olarak yedeklendi."); }); };
+    $("#ytz-report").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportReport(r, S.reportScopePage); setL(S.mReportDone + failNote()); idle(); }); };
+    $("#ytz-reportall").onclick = function () { setBusy(true); setL(S.mReportPreparing); dbGetAll().then(function (r) { exportReport(r, S.reportScopeAccum); setL(S.mReportDone); idle(); }); };
+    $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL(S.mDone(r.length) + failNote()); idle(); }); };
+    $("#ytz-text").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setP(0); setL(S.mTextLoading); return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + S.mCompleted); idle(); }); };
+    $("#ytz-accum").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setL(S.mAccumAdding); return dbPutRows(r); }).then(function () { setL(S.mAccumAdded + failNote()); idle(); }); };
+    $("#ytz-exportall").onclick = function () { setBusy(true); setL(S.mPreparing); dbGetAll().then(function (r) { exportData(r, "Tez_BIRIKIM", fmt()); setL(S.mDone(r.length)); idle(); }); };
+    $("#ytz-textall").onclick = function () { setBusy(true); setP(0); setL(S.mTextAllLoading); dbGetAll().then(function (r) { return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + S.mCompleted); idle(); }); };
+    $("#ytz-backup").onclick = function () { dbGetAll().then(function (r) { saveText(JSON.stringify(r), "Tez_Birikim_Yedek_" + stamp() + ".json", "application/json"); setL(S.mBackupDone(r.length)); }); };
     $("#ytz-restore").onclick = function () { $("#ytz-file").click(); };
     $("#ytz-file").onchange = function (e) {
       var file = e.target.files[0]; if (!file) return;
       var reader = new FileReader();
-      reader.onload = function () { try { var arr = JSON.parse(reader.result); if (!Array.isArray(arr)) throw 0; setBusy(true); setL("Geri yükleniyor…"); dbPutRows(arr).then(function () { setL(arr.length + " tez geri yüklendi (tekrarlar ayıklandı)."); idle(); }); } catch (x) { alert("Geçersiz yedek dosyası."); } };
+      reader.onload = function () { try { var arr = JSON.parse(reader.result); if (!Array.isArray(arr)) throw 0; setBusy(true); setL(S.mRestoring); dbPutRows(arr).then(function () { setL(S.mRestored(arr.length)); idle(); }); } catch (x) { alert(S.mInvalidBackup); } };
       reader.readAsText(file); e.target.value = "";
     };
-    $("#ytz-clear").onclick = function () { if (!confirm("Biriktirilen tüm veriler silinsin mi? Geri alınamaz.")) return; dbClear().then(function () { filtered = null; setL("Biriktirme temizlendi."); refreshInfo(); }); };
+    $("#ytz-clear").onclick = function () { if (!confirm(S.mClearConfirm)) return; dbClear().then(function () { filtered = null; setL(S.mCleared); refreshInfo(); }); };
 
     $("#ytz-filter").onclick = function () {
       var f = {
@@ -780,19 +868,19 @@
         onlyPdf: $("#ytz-f-pdf").checked, metinNesri: $("#ytz-f-metin").checked
       };
       dbGetAll().then(function (all) {
-        if (!all.length) { alert("Önce biriktirin (Biriktirme bölümü)."); return; }
+        if (!all.length) { alert(S.mNeedAccum); return; }
         filtered = applyFilter(all, f);
-        setL(filtered.length + " / " + all.length + " tez filtreye uydu.");
+        setL(S.mFilterMatched(filtered.length, all.length));
         prog.style.display = "block"; refreshInfo();
       });
     };
-    $("#ytz-filter-export").onclick = function () { if (!filtered || !filtered.length) return; exportData(filtered, "Tez_FILTRELI", fmt()); setL(filtered.length + " eşleşen tez aktarıldı."); };
-    $("#ytz-filter-text").onclick = function () { if (!filtered || !filtered.length) return; setBusy(true); setP(0); setL("Eşleşenlerin metinleri indiriliyor…"); downloadTexts(filtered, setP, setL).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
+    $("#ytz-filter-export").onclick = function () { if (!filtered || !filtered.length) return; exportData(filtered, "Tez_FILTRELI", fmt()); setL(S.mFilterExported(filtered.length)); };
+    $("#ytz-filter-text").onclick = function () { if (!filtered || !filtered.length) return; setBusy(true); setP(0); setL(S.mFilterTextLoading); downloadTexts(filtered, setP, setL).then(function () { setL(plabel.textContent + S.mCompleted); idle(); }); };
 
     refreshInfo();
     return { open: function () { overlay.style.display = "block"; panel.style.display = "block"; }, close: close };
   }
 
   ensureDeps().then(function () { window.__yokTezAraci__ = buildUI(); })
-    .catch(function (e) { alert("Gerekli kütüphaneler yüklenemedi:\n" + e.message); });
+    .catch(function (e) { alert(T().depsError + e.message); });
 })();
