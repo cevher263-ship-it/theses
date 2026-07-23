@@ -148,9 +148,22 @@
   }
 
   // --- Excel ---------------------------------------------------------------
+  // İşe yarayan bilgiler ilk sütunlarda; özetler ve kodlar en sonda.
+  var COLUMN_ORDER = [
+    "Tez Adı (Orijinal)", "Yazar", "Tür", "Yıl", "Konu",
+    "Üniversite / Yer Bilgisi", "Danışman", "Dil",
+    "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No",
+    "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)",
+    "kayitNo", "tezNo (kodlu)"
+  ];
+  var COLUMN_WIDTHS = [55, 22, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
+
   function exportExcel(rows, prefix) {
     var clean = rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; });
-    var ws = XLSX.utils.json_to_sheet(clean);
+    var ws = XLSX.utils.json_to_sheet(clean, { header: COLUMN_ORDER });
+    ws["!cols"] = COLUMN_WIDTHS.map(function (w) { return { wch: w }; });
+    // Başlık satırına filtre okları (her sütunda açılır filtre)
+    if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Tezler");
     var stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
