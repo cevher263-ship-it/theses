@@ -1,5 +1,5 @@
 /*
- * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.6.3
+ * YÖK Ulusal Tez Merkezi - Veri Kazıma Aracı (YENİ ARAYÜZ SÜRÜMÜ)  v1.7
  * ---------------------------------------------------------------------------
  * Orijinal araç: https://github.com/mytunca/theses (Muhammet Yunus Tunca, MIT)
  * YÖK Tez Merkezi'nin kart tabanlı yeni arayüzüne uyarlanmıştır.
@@ -124,15 +124,27 @@
       "kayitNo": t.kayitNo, "tezNo (kodlu)": t.tezNo
     };
   }
+  function detayOk(d) { return !!(d && (d.yer || d.trOzet || d.danisman || d.enOzet)); }
   // collectPdf=false (varsayılan): sadece metaveri (tezBilgiDetay) çekilir → ~2× hızlı.
   //   PDF indirme linki gerektiğinde (PDF·ZIP indirirken) o an alınır.
   // collectPdf=true: PDF linki de metaveriye eklenir (Excel'de "PDF İndirme Linki" dolu gelir, yavaşlar).
+  // Dönüş: { rows, failed } — failed: sunucu yoğunluğu vb. nedeniyle verisi eksik kalan tez sayısı.
   function fetchAllMetadata(theses, onProgress, collectPdf) {
-    var rows = new Array(theses.length);
-    return runPool(theses, function (t) {
-      var jobs = [fetchDetay(t), collectPdf ? fetchPdfLink(t) : Promise.resolve(null)];
-      return Promise.all(jobs).then(function (res) { rows[theses.indexOf(t)] = buildRow(t, res[0] || {}, res[1]); });
-    }, 10, onProgress).then(function () { return rows.filter(Boolean); });
+    var n = theses.length, rows = new Array(n), failed = new Array(n).fill(false);
+    function work(idx) {
+      var t = theses[idx];
+      return Promise.all([fetchDetay(t), collectPdf ? fetchPdfLink(t) : Promise.resolve(null)])
+        .then(function (res) { var d = res[0] || {}; rows[idx] = buildRow(t, d, res[1]); failed[idx] = !detayOk(d); });
+    }
+    var idxs = theses.map(function (_, i) { return i; });
+    return runPool(idxs, work, 10, onProgress).then(function () {
+      var retry = idxs.filter(function (i) { return failed[i]; });
+      if (!retry.length) return;
+      // Nazik ikinci geçiş: eksik kalanları düşük eşzamanlılıkla tekrar dene (throttle'ı aşmak için)
+      return runPool(retry, work, 3);
+    }).then(function () {
+      return { rows: rows.filter(Boolean), failed: failed.filter(Boolean).length };
+    });
   }
 
   /* ---------- Otomatik etiketleme (bilim dalı) ----------
@@ -195,9 +207,14 @@
   function isCombinedIslamName(s) { s = lc(s); return s.indexOf("tarih") > -1 && s.indexOf("sanat") > -1; }
   // ÖZEL: İslam Tarihi ve Sanatları bağlamındaki tezi içerikten 3 alt-dala ayır (illaki bir etiket verir)
   function detectIslam3(row) {
+    // 1) KONU en güçlü sinyal (YÖK'ün kendi sınıflaması): Edebiyat / Sanat
+    var konu = lc(row["Konu"]);
+    if (/sanat/.test(konu)) return "Türk İslam Sanatları";                 // Sanat Tarihi, Güzel Sanatlar, El Sanatları…
+    if (/edebiyat|dil ve edeb/.test(konu)) return "Türk İslam Edebiyatı";   // Türk Dili ve Edebiyatı…
+    // 2) İçerik anahtar kelimeleri (başlık + özet + anahtar kelime)
     var hay = lc([row["Konu"], row["Tez Adı (Orijinal)"], row["Tez Adı (Çeviri)"], row["Dizin (Anahtar Kelimeler)"], row["Özet (Türkçe)"]].join(" "));
-    if (/hüsn[-\s]?i hat|hattat|hat sanat|hat san'at|tezhip|tezyin|minyatür|\bebru\b|\bçini\b|kaligrafi|mushaf|cilt san|kitâbe|kitabe|süsleme|mimari|mimarî|türbe|hânkâh|külliye|kaligraf|sanat tarih/.test(hay)) return "Türk İslam Sanatları";
-    if (/divan edebiyat|divan şiir|dîvân|dîvânı|\bmesnevi\b|\bgazel\b|kaside|kasîde|na't|na’t|naat|mevlid|mevlit|münşeat|tekke şiir|tasavvuf edebiyat|halk edebiyat|şiir|şair/.test(hay)) return "Türk İslam Edebiyatı";
+    if (/hüsn[-\s]?i hat|hattat|hat sanat|hat san'at|tezhip|tezyin|minyatür|\bebru\b|\bçini\b|kaligrafi|mushaf|cilt san|kitâbe|kitabe|süsleme|mimari|mimarî|türbe|hânkâh|külliye|kaligraf|sanat tarih|hüsn-i/.test(hay)) return "Türk İslam Sanatları";
+    if (/edebiyat|edebî|edebi |divan|dîvân|\bmesnevi\b|\bgazel\b|kaside|kasîde|na't|na’t|naat|mevlid|mevlit|münşeat|tekke şiir|\bşiir|\bşair|şerh|şârih|nüsha|müellif hatt|çeviri yazı|çeviriyazı|belagat|belâgat|metin neşri|dîvânçe|tercüme met/.test(hay)) return "Türk İslam Edebiyatı";
     return "İslam Tarihi"; // bu bağlamda kalan her şey İslam Tarihi kabul edilir
   }
   // Nihai etiket:
@@ -530,7 +547,7 @@
           '<button class="ytz-btn sec" id="ytz-filter-text" disabled>Eşleşenlerin metinleri (PDF·ZIP)</button>' +
         '</div>' +
         '<div id="ytz-prog" style="display:none;"><div class="ytz-bar"><i id="ytz-bar"></i></div><div class="ytz-label" id="ytz-plabel"></div></div>' +
-      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.6.3</div>';
+      '</div><div class="ytz-foot">mytunca/theses · yeni arayüz v1.7</div>';
     document.body.appendChild(overlay); document.body.appendChild(panel);
 
     var $ = function (s) { return panel.querySelector(s); };
@@ -558,17 +575,18 @@
     function close() { overlay.remove(); panel.remove(); css.remove(); }
     overlay.onclick = close; $(".ytz-x").onclick = close;
 
-    var pageRows = null, pageRowsPdf = false;
+    var pageRows = null, pageRowsPdf = false, pageFailed = 0;
+    function failNote() { return pageFailed > 0 ? " (" + pageFailed + " tezde sunucu yoğunluğu nedeniyle veri eksik kalmış olabilir.)" : ""; }
     function getPageRows() {
       var wantPdf = $("#ytz-pdflink").checked;
       if (pageRows && pageRowsPdf === wantPdf) return Promise.resolve(pageRows);
       setL("Metaveriler indiriliyor…");
-      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }, wantPdf).then(function (r) { pageRows = r; pageRowsPdf = wantPdf; return r; });
+      return fetchAllMetadata(theses, function (d, n) { setP(Math.round(100 * d / n)); setL("Metaveri: " + d + " / " + n); }, wantPdf).then(function (res) { pageRows = res.rows; pageRowsPdf = wantPdf; pageFailed = res.failed; return res.rows; });
     }
 
-    $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL("Bitti · " + r.length + " tez aktarıldı."); idle(); }); };
+    $("#ytz-meta").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { exportData(r, "Tez_Metaverileri", fmt()); setL("Bitti · " + r.length + " tez aktarıldı." + failNote()); idle(); }); };
     $("#ytz-text").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setP(0); setL("Metinler indiriliyor…"); return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
-    $("#ytz-accum").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setL("Biriktirmeye ekleniyor…"); return dbPutRows(r); }).then(function () { setL("Bu aramadaki tezler biriktirmeye eklendi."); idle(); }); };
+    $("#ytz-accum").onclick = function () { setBusy(true); setP(0); getPageRows().then(function (r) { setL("Biriktirmeye ekleniyor…"); return dbPutRows(r); }).then(function () { setL("Bu aramadaki tezler biriktirmeye eklendi." + failNote()); idle(); }); };
     $("#ytz-exportall").onclick = function () { setBusy(true); setL("Hazırlanıyor…"); dbGetAll().then(function (r) { exportData(r, "Tez_BIRIKIM", fmt()); setL("Bitti · " + r.length + " tez aktarıldı."); idle(); }); };
     $("#ytz-textall").onclick = function () { setBusy(true); setP(0); setL("Biriktirilenlerin metinleri indiriliyor…"); dbGetAll().then(function (r) { return downloadTexts(r, setP, setL); }).then(function () { setL(plabel.textContent + "\nTamamlandı."); idle(); }); };
     $("#ytz-backup").onclick = function () { dbGetAll().then(function (r) { saveText(JSON.stringify(r), "Tez_Birikim_Yedek_" + stamp() + ".json", "application/json"); setL(r.length + " tez JSON olarak yedeklendi."); }); };

@@ -1,8 +1,6 @@
 // Uzantı simgesine tıklanınca aracı, açık olan YÖK Tez sayfasına enjekte eder.
-// Yöntem: sayfaya, uzantı içindeki yoktez-veri-indir.js'yi işaret eden bir <script>
-// etiketi eklenir. Böylece araç sayfanın kendi bağlamında (MAIN world) çalışır ve
-// sayfadaki referenceData'ya erişir. (Kanıtlanmış, tüm Chrome sürümlerinde çalışan yöntem.)
-// Araç ikinci kez enjekte edilirse kendi __yokTezAraci__ koruması paneli yeniden açar.
+// Kütüphaneler (XLSX/JSZip/FileSaver) uzantı içine gömülüdür; CDN'e ihtiyaç yoktur.
+// Sırayla: gömülü kütüphaneler -> araç. Araç, tanımlı olan kütüphaneleri tekrar yüklemez.
 chrome.action.onClicked.addListener(function (tab) {
   if (!tab || !tab.id) return;
   var url = tab.url || "";
@@ -23,10 +21,18 @@ chrome.action.onClicked.addListener(function (tab) {
     target: { tabId: tab.id },
     func: function () {
       try {
-        var s = document.createElement("script");
-        s.src = chrome.runtime.getURL("yoktez-veri-indir.js");
-        s.onload = function () { s.remove(); };
-        (document.head || document.documentElement).appendChild(s);
+        // Zaten açıksa yeniden yükleme; paneli aç.
+        if (window.__yokTezAraci__) { window.__yokTezAraci__.open(); return; }
+        var files = ["lib/xlsx.bundle.js", "lib/jszip.min.js", "lib/FileSaver.min.js", "yoktez-veri-indir.js"];
+        var i = 0;
+        (function next() {
+          if (i >= files.length) return;
+          var s = document.createElement("script");
+          s.src = chrome.runtime.getURL(files[i]);
+          s.onload = function () { s.remove(); i++; next(); };
+          s.onerror = function () { console.error("YÖKTez yükleme hatası (araç CDN'e düşecek):", files[i]); s.remove(); i++; next(); };
+          (document.head || document.documentElement).appendChild(s);
+        })();
       } catch (e) { console.error("YÖKTez enjeksiyon hatası:", e); }
     }
   }).catch(function (e) { console.error("YÖKTez executeScript hatası:", e); });
