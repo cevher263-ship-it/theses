@@ -120,12 +120,14 @@
     }, 12, onProgress).then(function () { return rows.filter(Boolean); });
   }
 
-  /* ---------- Otomatik etiketleme (bilim dalı) ---------- */
-  // Varsayılan kurallar — kullanıcı panelden düzenleyebilir. Biçim:  Etiket = kelime1, kelime2, ...
-  var DEFAULT_RULES =
-    "Türk İslam Edebiyatı = türk islam edebiyat, islam edebiyat, edebiyat, divan, dîvân, mesnevi, gazel, kaside, na't, naat, mevlid, şair, şiir, belagat, aruz, münşeat\n" +
-    "Türk İslam Sanatları = türk islam sanat, islam sanatları, sanatları, hüsn-i hat, hattat, hat sanat, tezhip, minyatür, ebru, çini, kaligrafi, tezyin, mushaf, cilt sanat, kitabe, mimari\n" +
-    "İslam Tarihi = islam tarihi, islam tarih, siyer, sahabe, halife, hilafet, hulefa, emevi, emevî, abbasi, abbâsî, endülüs, memlük, fetih, meğazi, gazve, asr-ı saadet, raşid, hz. peygamber, hz. muhammed";
+  /* ---------- Otomatik etiketleme (bilim dalı) ----------
+     Etiket, tezin kendi kaydından (Yer Bilgisi) FAKTÜEL olarak doldurulur:
+       1) Bilim Dalı belirtilmişse onu yazar (ör. İslam Tarihi, Türk Dili ve Edebiyatı)
+       2) Yoksa Anabilim Dalı'nı yazar (ör. Temel İslam Bilimleri, İslam Tarihi ve Sanatları)
+       3) Hiç disiplin bilgisi yoksa "Belirsiz"
+     İSTEĞE BAĞLI: Panelde anahtar-kelime kuralları tanımlanırsa, birleşik ("X ve Y")
+     ya da eksik dallar bu kurallarla içeriğe göre alt-dala ayrılabilir. */
+  var DEFAULT_RULES = ""; // varsayılan: kural yok → faktüel bilim/anabilim dalı
 
   function lc(s) { return String(s || "").toLocaleLowerCase("tr"); }
   function parseRules(text) {
@@ -137,22 +139,50 @@
       return label && kws.length ? { label: label, keywords: kws } : null;
     }).filter(Boolean);
   }
-  // Yer bilgisinden GERÇEK bilim dalı parçasını al (anabilim dalı hariç; birleşik ABD ayrım için kullanılmaz)
-  function bilimDaliSegment(yer) {
-    var p = String(yer || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean);
-    return p.find(function (s) { return /bilim dal/i.test(s) && !/anabilim/i.test(s); }) || "";
-  }
-  // Bir satırı sınıflandır: 1) bilim dalı tek disipline uyuyorsa kesin, 2) metin (konu+başlık+anahtar+özet), 3) Belirsiz
-  function classifyRow(row, rules) {
-    var bd = bilimDaliSegment(row["Üniversite / Yer Bilgisi"]);
-    if (bd) {
+  function segments(yer) { return String(yer || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean); }
+  function bilimDaliSegment(yer) { return segments(yer).find(function (s) { return /bilim dal/i.test(s) && !/anabilim/i.test(s); }) || ""; }
+  function anabilimDaliSegment(yer) { return segments(yer).find(function (s) { return /anabilim dal/i.test(s); }) || ""; }
+  // "İslam Tarihi Bilim Dalı" -> "İslam Tarihi" ; "TEMEL İSLAM BİLİMLERİ ANABİLİM DALI" -> "TEMEL İSLAM BİLİMLERİ"
+  function cleanDal(seg) { return String(seg || "").replace(/\s*(anabilim|bilim)\s+dal[ıiİI]\s*$/i, "").trim(); }
+
+  // İsteğe bağlı kural eşleşmesi (yalnızca kullanıcı kural girdiyse çağrılır)
+  function ruleLabel(row, bd, rules) {
+    if (bd && !/\sve\s/i.test(lc(bd))) {
       var bdLc = lc(bd);
       var hits = rules.filter(function (r) { return r.keywords.some(function (kw) { return bdLc.indexOf(kw) > -1; }); });
-      if (hits.length === 1) return hits[0].label; // tek disiplin → kesin
-      // 0 veya birden fazla (birleşik) → metne düş
+      if (hits.length === 1) return hits[0].label;
     }
     var hay = lc([row["Konu"], row["Tez Adı (Orijinal)"], row["Dizin (Anahtar Kelimeler)"], row["Özet (Türkçe)"]].join(" "));
     for (var i = 0; i < rules.length; i++) { for (var j = 0; j < rules[i].keywords.length; j++) { if (hay.indexOf(rules[i].keywords[j]) > -1) return rules[i].label; } }
+    return null;
+  }
+  // "İslam Tarihi ve Sanatları" bağlamı mı? (bilim/anabilim dalı hem tarih hem sanat içeriyor)
+  function isIslamTASContext(yer) {
+    var d = lc(bilimDaliSegment(yer) + " | " + anabilimDaliSegment(yer));
+    return d.indexOf("tarih") > -1 && d.indexOf("sanat") > -1 && d.indexOf("islam") > -1;
+  }
+  function isCombinedIslamName(s) { s = lc(s); return s.indexOf("tarih") > -1 && s.indexOf("sanat") > -1; }
+  // ÖZEL: İslam Tarihi ve Sanatları bağlamındaki tezi içerikten 3 alt-dala ayır (illaki bir etiket verir)
+  function detectIslam3(row) {
+    var hay = lc([row["Konu"], row["Tez Adı (Orijinal)"], row["Tez Adı (Çeviri)"], row["Dizin (Anahtar Kelimeler)"], row["Özet (Türkçe)"]].join(" "));
+    if (/hüsn[-\s]?i hat|hattat|hat sanat|hat san'at|tezhip|tezyin|minyatür|\bebru\b|\bçini\b|kaligrafi|mushaf|cilt san|kitâbe|kitabe|süsleme|mimari|mimarî|türbe|hânkâh|külliye|kaligraf|sanat tarih/.test(hay)) return "Türk İslam Sanatları";
+    if (/divan edebiyat|divan şiir|dîvân|dîvânı|\bmesnevi\b|\bgazel\b|kaside|kasîde|na't|na’t|naat|mevlid|mevlit|münşeat|tekke şiir|tasavvuf edebiyat|halk edebiyat|şiir|şair/.test(hay)) return "Türk İslam Edebiyatı";
+    return "İslam Tarihi"; // bu bağlamda kalan her şey İslam Tarihi kabul edilir
+  }
+  // Nihai etiket:
+  //  1) net spesifik bilim dalı (birleşik İslam T&S hariç) → faktüel yaz (GENEL: her alan için)
+  //  2) İslam Tarihi ve Sanatları bağlamı → içerikten 3 alt-dala ayır (ÖZEL)
+  //  3) (varsa) kullanıcı kuralları
+  //  4) faktüel: birleşik bilim dalı → anabilim dalı → Belirsiz
+  function classifyRow(row, rules) {
+    var yer = row["Üniversite / Yer Bilgisi"];
+    var bd = bilimDaliSegment(yer), abd = anabilimDaliSegment(yer);
+    var bdC = cleanDal(bd), abdC = cleanDal(abd);
+    if (bdC && !isCombinedIslamName(bdC)) return bdC;           // ör. "İslam Tarihi", "Türk Dili ve Edebiyatı", "Temel İslam Bilimleri"
+    if (isIslamTASContext(yer)) return detectIslam3(row);       // ÖZEL: 3 İslam alt-dalı
+    if (rules && rules.length) { var l = ruleLabel(row, bd, rules); if (l) return l; }
+    if (bdC) return bdC;
+    if (abdC) return abdC;
     return "Belirsiz";
   }
   var getRules = function () { return parseRules(DEFAULT_RULES); }; // UI hazır olunca panele bağlanır
@@ -160,15 +190,16 @@
     var rules = getRules();
     return rows.map(function (r) {
       var c = Object.assign({}, r); delete c._key;
-      c["Bilim Dalı"] = bilimDaliSegment(c["Üniversite / Yer Bilgisi"]);
+      c["Anabilim Dalı"] = cleanDal(anabilimDaliSegment(c["Üniversite / Yer Bilgisi"]));
+      c["Bilim Dalı"] = cleanDal(bilimDaliSegment(c["Üniversite / Yer Bilgisi"]));
       c["Etiket"] = classifyRow(c, rules);
       return c;
     });
   }
 
   /* ---------- Çıktı biçimleri ---------- */
-  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
-  var COLUMN_WIDTHS = [55, 22, 20, 26, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
+  var COLUMN_ORDER = ["Tez Adı (Orijinal)", "Yazar", "Etiket", "Bilim Dalı", "Anabilim Dalı", "Tür", "Yıl", "Konu", "Üniversite / Yer Bilgisi", "Danışman", "Dil", "Dizin (Anahtar Kelimeler)", "Tez Adı (Çeviri)", "Tez No", "PDF İndirme Linki", "Özet (Türkçe)", "Özet (İngilizce)", "kayitNo", "tezNo (kodlu)"];
+  var COLUMN_WIDTHS = [55, 22, 24, 26, 30, 16, 7, 22, 40, 24, 10, 30, 55, 10, 32, 60, 60, 24, 24];
 
   function cleanRows(rows) { return rows.map(function (r) { var c = Object.assign({}, r); delete c._key; return c; }); }
 
@@ -191,8 +222,8 @@
       if (limit && pairs.length > limit) aoa.push(["… (+" + (pairs.length - limit) + " diğer)", "", ""]);
       aoa.push([""]);
     }
-    if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE", tally(function (r) { return r["Etiket"]; }));
-    section("BİLİM DALINA GÖRE (ilk 25)", tally(function (r) { return r["Bilim Dalı"] || "(belirtilmemiş)"; }), 25);
+    if (rows.some(function (r) { return r["Etiket"]; })) section("ETİKETE GÖRE (ilk 30)", tally(function (r) { return r["Etiket"]; }), 30);
+    section("ANABİLİM DALINA GÖRE (ilk 25)", tally(function (r) { return r["Anabilim Dalı"] || "(belirtilmemiş)"; }), 25);
     section("YILA GÖRE", tally(function (r) { return r["Yıl"]; }));
     section("TÜRE GÖRE", tally(function (r) { return r["Tür"]; }));
     section("DİLE GÖRE", tally(function (r) { return r["Dil"]; }));
@@ -384,9 +415,9 @@
           '<button class="ytz-btn warn" id="ytz-clear">Biriktirmeyi temizle</button>' +
           '<input type="file" id="ytz-file" accept=".json" style="display:none;">' +
         '</div>' +
-        '<div class="ytz-sec"><h4>Etiketleme (bilim dalı) kuralları</h4>' +
-          '<p style="font-size:11.5px;color:#555;">Her satır: <b>Etiket = kelime1, kelime2, …</b>. Araç her tezi önce <b>Bilim Dalı</b>\'na, o yoksa <b>Konu+Başlık+Anahtar Kelime+Özet</b>\'e bakarak etiketler; hiçbiri tutmazsa <b>Belirsiz</b> yazar. Çıktıya <b>Etiket</b> ve <b>Bilim Dalı</b> sütunları eklenir.</p>' +
-          '<textarea id="ytz-rules" spellcheck="false"></textarea>' +
+        '<div class="ytz-sec"><h4>Etiketleme (bilim dalı)</h4>' +
+          '<p style="font-size:11.5px;color:#555;">Çıktıya otomatik <b>Etiket</b>, <b>Bilim Dalı</b>, <b>Anabilim Dalı</b> sütunları eklenir.<br>• <b>Genel:</b> Etiket = bilim dalı (varsa) → anabilim dalı → yoksa <b>Belirsiz</b>.<br>• <b>Özel:</b> <b>İslam Tarihi</b>, <b>Türk İslam Edebiyatı</b>, <b>Türk İslam Sanatları</b> için bilim dalı eksik/birleşik olsa da içerikten mutlaka birine atanır.<br><b>İsteğe bağlı</b>: başka alanları da içerikten ayırmak için kural yazın — <b>Etiket = kelime1, kelime2, …</b> (boş bırakılabilir).</p>' +
+          '<textarea id="ytz-rules" spellcheck="false" placeholder="Örnek (isteğe bağlı):&#10;Türk İslam Edebiyatı = divan edebiyat, mesnevi, na\'t, mevlid&#10;Türk İslam Sanatları = hüsn-i hat, tezhip, minyatür, çini&#10;İslam Tarihi = siyer, sahabe, emevi, abbasi, endülüs"></textarea>' +
         '</div>' +
         '<div class="ytz-sec"><h4>Filtrele (biriktirilenler üzerinde)</h4>' +
           '<div class="row"><div><label>Yıl (min)</label><input id="ytz-f-yil1" type="number" placeholder="örn. 2015"></div>' +
