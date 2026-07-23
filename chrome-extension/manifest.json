@@ -3,7 +3,7 @@
   "name": "YÖK Tez Merkezi Veri İndirme Aracı",
   "description": "YÖK Ulusal Tez Merkezi'nden tez metaverilerini (Excel/CSV/RIS/BibTeX) ve PDF metinlerini toplu indirir. Yeni arayüz uyumlu.",
   "author": "Muhammet Yunus Tunca (orijinal) - yeni arayüz uyarlaması",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "action": {
     "default_title": "Tez Verilerini İndir",
     "default_icon": "yok-logo.png"
@@ -11,5 +11,11 @@
   "icons": { "128": "yok-logo.png" },
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://tez.yok.gov.tr/*"],
-  "background": { "service_worker": "background.js" }
+  "background": { "service_worker": "background.js" },
+  "web_accessible_resources": [
+    {
+      "resources": ["yoktez-veri-indir.js"],
+      "matches": ["https://tez.yok.gov.tr/*"]
+    }
+  ]
 }
